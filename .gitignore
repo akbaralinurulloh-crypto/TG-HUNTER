@@ -33,6 +33,8 @@ logs/
 temp_media/
 backups/
 postgres_data/
+*.db
+*.sqlite*
 
 # IDE
 .vscode/

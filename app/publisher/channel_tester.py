@@ -1,6 +1,11 @@
-"""Channel connectivity and bot permissions diagnostic tester (TZ Section 17)."""
+import sys
 import asyncio
 from typing import Dict, Any, Optional
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramUnauthorizedError, TelegramBadRequest
 from app.config import settings
@@ -121,24 +126,40 @@ async def run_channel_diagnostic(bot: Optional[Bot] = None) -> bool:
             print(f"\n❌ Bot autentifikatsiyasi muvaffaqiyatsiz: {auth_res['error']}\n")
             return False
 
-        # 2. Permissions check
-        perm_res = await tester.check_channel_permissions()
-        if not perm_res["success"]:
-            print(f"\n❌ Kanal ruxsati yetarli emas: {perm_res['error']}\n")
-            return False
+        # 2. Permissions & test post for each configured target channel
+        channels_to_test = settings.target_channels_list or [settings.TARGET_CHANNEL]
+        success_channels = []
+        failed_channels = []
 
-        # 3. Test post
-        post_res = await tester.send_test_ping()
-        if not post_res["success"]:
-            print(f"\n❌ Test xabari yuborilmadi: {post_res['error']}\n")
-            return False
+        for ch in channels_to_test:
+            print(f"\n--- Kanal tekshirilmoqda: {ch} ---")
+            perm_res = await tester.check_channel_permissions(ch)
+            if not perm_res["success"]:
+                print(f"❌ Kanal ruxsati yetarli emas ({ch}): {perm_res['error']}")
+                failed_channels.append((ch, perm_res['error']))
+                continue
+
+            post_res = await tester.send_test_ping(ch)
+            if not post_res["success"]:
+                print(f"❌ Test xabari yuborilmadi ({ch}): {post_res['error']}")
+                failed_channels.append((ch, post_res['error']))
+                continue
+
+            print(f"✅ {ch} ulanishi muvaffaqiyatli! Test xabari ID: {post_res['message_id']}")
+            success_channels.append((ch, post_res['message_id']))
 
         print("\n" + "=" * 60)
-        print("  ✅ 1-BOSQICH (KANAL ULANISHI) MUVAFFAQIYATLI YAKUNLANDI!")
-        print("=" * 60)
-        print(f"Kanal: {settings.TARGET_CHANNEL}")
-        print(f"Yuborilgan xabar ID: {post_res['message_id']}\n")
-        return True
+        if success_channels:
+            print("  ✅ KANAL ULANISHI MUVAFFAQIYATLI TEKSHIRILDI!")
+            for ch, mid in success_channels:
+                print(f"  • {ch}: Xabar ID {mid}")
+        if failed_channels:
+            print("  ⚠️ BAZI KANALLARDA XATOLIK ANIQLANDI:")
+            for ch, err in failed_channels:
+                print(f"  • {ch}: {err}")
+        print("=" * 60 + "\n")
+
+        return len(success_channels) > 0
 
     finally:
         if not bot:

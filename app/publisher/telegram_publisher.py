@@ -78,52 +78,40 @@ class TelegramPublisher:
         media_ref = source_post.media_reference if source_post else None
         media_type = source_post.media_type if source_post else "TEXT"
 
-        success = False
-        telegram_msg_id = None
-        error_msg = None
+        channels = settings.target_channels_list or [self.target_channel]
+        published_records = []
+        error_msgs = []
 
-        try:
-            if not self.bot:
-                logger.info(f"[DRY-RUN / MOCK] Publishing ContentItem #{content_item_id} to {self.target_channel}")
-                telegram_msg_id = 99990000 + content_item_id
-                success = True
-            else:
-                telegram_msg_id = await self._send_telegram(formatted_text, media_type, media_ref)
-                success = True
-
-        except TelegramRetryAfter as retry_err:
-            logger.warning(f"Telegram FloodWait while publishing #{content_item_id}: waiting {retry_err.retry_after}s")
-            await asyncio.sleep(retry_err.retry_after)
+        for ch in channels:
             try:
-                telegram_msg_id = await self._send_telegram(formatted_text, media_type, media_ref)
-                success = True
+                if not self.bot:
+                    logger.info(f"[DRY-RUN / MOCK] Publishing ContentItem #{content_item_id} to {ch}")
+                    published_records.append((ch, 99990000 + content_item_id))
+                else:
+                    msg_id = await self._send_telegram(formatted_text, media_type, media_ref, target_channel=ch)
+                    published_records.append((ch, msg_id))
+            except TelegramRetryAfter as retry_err:
+                logger.warning(f"Telegram FloodWait while publishing #{content_item_id} to {ch}: waiting {retry_err.retry_after}s")
+                await asyncio.sleep(retry_err.retry_after)
+                try:
+                    msg_id = await self._send_telegram(formatted_text, media_type, media_ref, target_channel=ch)
+                    published_records.append((ch, msg_id))
+                except Exception as e:
+                    error_msgs.append(f"{ch}: {e}")
             except Exception as e:
-                error_msg = str(e)
-                success = False
-
-        except TelegramNetworkError as net_err:
-            logger.error(f"Network timeout while publishing #{content_item_id}: {net_err}")
-            error_msg = f"Network timeout: {net_err}"
-            success = False
-
-        except TelegramAPIError as api_err:
-            logger.error(f"Telegram API error while publishing #{content_item_id}: {api_err}")
-            error_msg = str(api_err)
-            success = False
-
-        except Exception as e:
-            logger.error(f"Unexpected error publishing #{content_item_id}: {e}")
-            error_msg = str(e)
-            success = False
+                logger.error(f"Error publishing #{content_item_id} to {ch}: {e}")
+                error_msgs.append(f"{ch}: {e}")
 
         # Atomic finalize
-        if success and telegram_msg_id:
+        if published_records:
+            primary_ch, primary_msg_id = published_records[0]
+            all_channels = ", ".join(ch for ch, _ in published_records)
             content_item.status = "PUBLISHED"
             content_hash = source_post.content_hash if source_post else str(content_item_id)
             published_record = PublishedPost(
                 content_item_id=content_item.id,
-                target_channel=self.target_channel,
-                telegram_message_id=telegram_msg_id,
+                target_channel=all_channels,
+                telegram_message_id=primary_msg_id,
                 content_hash=content_hash,
             )
             session.add(published_record)
@@ -137,30 +125,38 @@ class TelegramPublisher:
             log = SystemLog(
                 event_type="POST_PUBLISHED",
                 severity="INFO",
-                message=f"Post #{content_item.id} kanalga joylandi (Msg ID: {telegram_msg_id})",
+                message=f"Post #{content_item.id} {all_channels} ga joylandi (Msg ID: {primary_msg_id})",
             )
             session.add(log)
             await session.commit()
-            logger.info(f"Post #{content_item.id} muvaffaqiyatli kanalga joylandi (Msg ID: {telegram_msg_id})")
+            logger.info(f"Post #{content_item.id} muvaffaqiyatli kanal(lar)ga joylandi ({all_channels})")
             return True
         else:
             content_item.status = "FAILED"
+            combined_err = "; ".join(error_msgs) if error_msgs else "Noma'lum xatolik"
             log = SystemLog(
                 event_type="PUBLISH_FAILED",
                 severity="ERROR",
-                message=f"Post #{content_item.id} nashri muvaffaqiyatsiz bo'ldi: {error_msg}",
+                message=f"Post #{content_item.id} nashri muvaffaqiyatsiz bo'ldi: {combined_err}",
             )
             session.add(log)
             await session.commit()
             return False
 
-    async def _send_telegram(self, text: str, media_type: str, media_ref: Optional[str]) -> int:
+    async def _send_telegram(
+        self,
+        text: str,
+        media_type: str,
+        media_ref: Optional[str],
+        target_channel: Optional[str] = None,
+    ) -> int:
         """Send message, photo, or video to Telegram target channel."""
         has_local_file = media_ref and os.path.exists(media_ref)
+        dest_channel = target_channel or self.target_channel
 
         if not has_local_file or media_type == "TEXT":
             msg = await self.bot.send_message(
-                chat_id=self.target_channel,
+                chat_id=dest_channel,
                 text=text[:4096],
                 parse_mode="HTML",
                 disable_web_page_preview=False,
@@ -170,7 +166,7 @@ class TelegramPublisher:
         caption_trunc = text[:1024]
         if media_type == "PHOTO":
             msg = await self.bot.send_photo(
-                chat_id=self.target_channel,
+                chat_id=dest_channel,
                 photo=FSInputFile(media_ref),
                 caption=caption_trunc,
                 parse_mode="HTML",
@@ -178,7 +174,7 @@ class TelegramPublisher:
             return msg.message_id
         elif media_type == "VIDEO":
             msg = await self.bot.send_video(
-                chat_id=self.target_channel,
+                chat_id=dest_channel,
                 video=FSInputFile(media_ref),
                 caption=caption_trunc,
                 parse_mode="HTML",
@@ -186,7 +182,7 @@ class TelegramPublisher:
             return msg.message_id
         else:
             msg = await self.bot.send_message(
-                chat_id=self.target_channel,
+                chat_id=dest_channel,
                 text=text[:4096],
                 parse_mode="HTML",
             )

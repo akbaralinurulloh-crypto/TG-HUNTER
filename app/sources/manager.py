@@ -82,11 +82,12 @@ class SourceManager:
         return new_src
 
     async def seed_initial_sources(self):
-        """Seed the 3 initial approved Umrah sources."""
+        """Seed the approved Umrah sources."""
         initial = [
             ("MuhtashamUmra", "Muhtasham Umra", "VERIFIED", "Muhtasham brendi rasmiy kanali"),
             ("nurlisafar", "Nurli Safar", "VERIFIED", "Hamkor ziyorat kanali — ruxsat berilgan"),
             ("muhtashamtravel", "Muhtasham Travel", "VERIFIED", "Muhtasham Travel asosiy ziyorat kanali"),
+            ("Muhtashamtravel_umra_sari_1", "Muhtasham Travel Umra Sari 1", "VERIFIED", "Muhtasham brendi rasmiy kanali"),
         ]
         for ident, title, rights, notes in initial:
             await self.register_source(ident, title, rights, notes)
