@@ -82,31 +82,34 @@ class ChannelTester:
             logger.error(msg)
             return {"success": False, "error": msg}
 
-    async def send_test_ping(self, channel_identifier: Optional[str] = None) -> Dict[str, Any]:
-        """Send a single diagnostic test message to verify end-to-end publishing capability."""
-        channel = channel_identifier or settings.TARGET_CHANNEL
+    async def send_test_ping(self, target_chat_id: Optional[Any] = None) -> Dict[str, Any]:
+        """Send diagnostic confirmation directly to admin private chat (NEVER to public channel)."""
+        target = target_chat_id or (settings.admin_ids_list[0] if settings.admin_ids_list else None)
+        if not target:
+            return {"success": False, "error": "Admin ID sozlanmagan!"}
         text = (
             "🤖 <b>Muhtasham Telegram AI Agent</b>\n\n"
             "✅ <i>Tizim ulanishi va kanal huquqlari muvaffaqiyatli sinovdan o'tkazildi.</i>\n"
-            f"📅 Test vaqti: <code>Asia/Tashkent</code>"
+            f"📡 <b>Maqsadli kanal:</b> <code>{settings.TARGET_CHANNEL}</code>\n"
+            f"📅 <b>Vaqt:</b> <code>Asia/Tashkent</code>"
         )
         try:
             sent_msg = await self.bot.send_message(
-                chat_id=channel,
+                chat_id=target,
                 text=text,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
-            logger.info(f"Test xabari muvaffaqiyatli yuborildi! Xabar ID: {sent_msg.message_id}")
+            logger.info(f"Test xabari faqat adminga ({target}) muvaffaqiyatli yuborildi! Xabar ID: {sent_msg.message_id}")
             return {"success": True, "message_id": sent_msg.message_id}
         except Exception as e:
-            msg = f"Test xabarini yuborishda xatolik: {e}"
+            msg = f"Admin test xabarini yuborishda xatolik: {e}"
             logger.error(msg)
             return {"success": False, "error": msg}
 
 
 async def run_channel_diagnostic(bot: Optional[Bot] = None) -> bool:
-    """Run full diagnostic sequence for Phase 1/Section 17."""
+    """Run full diagnostic sequence for Phase 1/Section 17 (Alerts sent only to Admin)."""
     missing = settings.validate_required_settings()
     if missing:
         logger.warning(f"Majburiy sozlamalar to'ldirilmagan: {', '.join(missing)}")
@@ -127,33 +130,35 @@ async def run_channel_diagnostic(bot: Optional[Bot] = None) -> bool:
             print(f"\n❌ Bot autentifikatsiyasi muvaffaqiyatsiz: {auth_res['error']}\n")
             return False
 
-        # 2. Permissions & test post for each configured target channel
+        # 2. Permissions check for each configured target channel (DO NOT post to channel!)
         channels_to_test = settings.target_channels_list or [settings.TARGET_CHANNEL]
         success_channels = []
         failed_channels = []
 
         for ch in channels_to_test:
-            print(f"\n--- Kanal tekshirilmoqda: {ch} ---")
+            print(f"\n--- Kanal ruxsati tekshirilmoqda: {ch} ---")
             perm_res = await tester.check_channel_permissions(ch)
             if not perm_res["success"]:
                 print(f"❌ Kanal ruxsati yetarli emas ({ch}): {perm_res['error']}")
                 failed_channels.append((ch, perm_res['error']))
                 continue
 
-            post_res = await tester.send_test_ping(ch)
-            if not post_res["success"]:
-                print(f"❌ Test xabari yuborilmadi ({ch}): {post_res['error']}")
-                failed_channels.append((ch, post_res['error']))
-                continue
+            print(f"✅ {ch} ulanishi va xabar joylash huquqi tasdiqlandi!")
+            success_channels.append(ch)
 
-            print(f"✅ {ch} ulanishi muvaffaqiyatli! Test xabari ID: {post_res['message_id']}")
-            success_channels.append((ch, post_res['message_id']))
+        # 3. Send test confirmation ONLY to admin private chat (NEVER to public channel)
+        if success_channels:
+            for admin_id in settings.admin_ids_list:
+                try:
+                    await tester.send_test_ping(target_chat_id=admin_id)
+                except Exception as e:
+                    logger.warning(f"Admin {admin_id} ga bildirishnoma yetib bormadi: {e}")
 
         print("\n" + "=" * 60)
         if success_channels:
-            print("  ✅ KANAL ULANISHI MUVAFFAQIYATLI TEKSHIRILDI!")
-            for ch, mid in success_channels:
-                print(f"  • {ch}: Xabar ID {mid}")
+            print("  ✅ KANAL RUXSATLARI MUVAFFAQIYATLI TASDIQLANDI!")
+            for ch in success_channels:
+                print(f"  • {ch}: Xabar joylash huquqi mavjud")
         if failed_channels:
             print("  ⚠️ BAZI KANALLARDA XATOLIK ANIQLANDI:")
             for ch, err in failed_channels:
