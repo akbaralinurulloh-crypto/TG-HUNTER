@@ -51,9 +51,10 @@ class ChannelTester:
             chat_member = await self.bot.get_chat_member(chat_id=channel, user_id=bot_info.id)
             status = chat_member.status  # "administrator" or "creator"
 
+            clean_ch = channel if channel.startswith("@") else f"@{channel}"
             if status not in ("administrator", "creator"):
                 msg = (
-                    f"Bot @{channel} kanalida administrator emas (joriy status: {status}). "
+                    f"Bot {clean_ch} kanalida administrator emas (joriy status: {status}). "
                     f"Iltimos, kanal sozlamalariga kirib, botni administrator qilib tayinlang!"
                 )
                 logger.error(msg)
@@ -62,11 +63,11 @@ class ChannelTester:
             # Check post messages permission
             can_post = getattr(chat_member, "can_post_messages", None)
             if can_post is False:
-                msg = f"Bot @{channel} kanalida administrator, lekin 'Post Messages' (Xabar yozish) huquqi yo'q!"
+                msg = f"Bot {clean_ch} kanalida administrator, lekin 'Post Messages' (Xabar yozish) huquqi yo'q!"
                 logger.error(msg)
                 return {"success": False, "status": status, "can_post": False, "error": msg}
 
-            logger.info(f"Bot @{channel} kanalida to'liq xabar joylash huquqiga ega.")
+            logger.info(f"Bot {clean_ch} kanalida to'liq xabar joylash huquqiga ega.")
             return {"success": True, "status": status, "can_post": True}
 
         except TelegramBadRequest as bad_req:
