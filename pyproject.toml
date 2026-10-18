@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "muhtasham-tg-agent"
+version = "1.0.0"
+description = "Muhtasham Telegram AI Agent - Content Monitoring, AI Analysis, and Publishing System"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "telethon>=1.36.0",
+    "aiogram>=3.13.0",
+    "sqlalchemy>=2.0.35",
+    "asyncpg>=0.29.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "google-generativeai>=0.8.0",
+    "apscheduler>=3.10.4",
+    "pytz>=2024.1",
+    "pillow>=10.4.0",
+    "imagehash>=4.3.1",
+    "numpy>=1.26.0",
+    "scipy>=1.14.0",
+    "loguru>=0.7.2",
+    "aiohttp>=3.10.5",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+pythonpath = ["."]
