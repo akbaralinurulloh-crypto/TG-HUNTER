@@ -2,6 +2,7 @@
 import sys
 import asyncio
 import signal
+from datetime import datetime
 from aiogram import Bot
 from app.config import settings
 from app.logging_config import logger, setup_logging
