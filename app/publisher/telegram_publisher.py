@@ -72,7 +72,26 @@ class TelegramPublisher:
         await session.commit()
 
         # Format message text: Bold headline + body
-        formatted_text = f"🕋 <b>{content_item.headline}</b>\n\n{content_item.body}"
+        headline = content_item.headline
+        for bad in ["Muhtasham Travel:", "Nurli Safar:", "Muhtasham Umra:", "Manba:", "✨ "]:
+            headline = headline.replace(bad, "").strip()
+        if not headline or headline.lower() == "ma'lumot":
+            headline = "Umra va Ziyorat Ma'lumotlari"
+
+        body = content_item.body
+        for bad in [
+            "📌 Manba: Nurli Safar", "📌 Manba: Muhtasham Travel", "📌 Manba: Muhtasham Umra",
+            "📌 Manba:", "Manba: Nurli Safar", "Manba: Muhtasham Travel", "Manba: Muhtasham Umra",
+            "📌 <i>Muhtasham Travel rasmiy ziyorat xabarnomasi</i>",
+        ]:
+            body = body.replace(bad, "").strip()
+
+        # Ensure contact phone 888327700 is appended at the end
+        contact_phone = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
+        if "888327700" not in body and "88 832 77 00" not in body and contact_phone not in body:
+            body = f"{body}\n\n📞 Murojaat uchun: {contact_phone}"
+
+        formatted_text = f"🕋 <b>{headline}</b>\n\n{body}"
 
         # Resolve media if any from source_post
         source_post = await session.get(SourcePost, content_item.source_post_id) if content_item.source_post_id else None

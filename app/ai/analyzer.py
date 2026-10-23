@@ -9,17 +9,20 @@ from app.ai.schemas import AIAnalysisOutput
 SYSTEM_INSTRUCTION = """
 Berilgan ruxsatli material asosida o‘zbek tilida ravon, aniq, foydali va tabiiy Telegram posti tayyorla. 
 Mavzuga mos qisqa sarlavha yoz. Asl mazmunni buzma. 
+Hech qachon olingan manba yoki kanal nomini ko‘rsatma.
+Post yakuniga faqat quyidagi rasmiy aloqa raqamini qo‘sh:
+📞 Murojaat uchun: +998 88 832 77 00
+
 Manbada yo‘q fakt, narx, sana, mehmonxona nomi, masofa, viza talabi yoki diniy hukmni o‘zingdan qo‘shma. 
 Shubhali ma’lumotlarni fakt sifatida bermagin. 
 Keraksiz takrorlar, ortiqcha emoji va asossiz reklama da’volaridan qoch. 
-Foydalanish huquqi va manba ko‘rsatish talablarini saqla.
 
 Mavzular: Umrah, Makka, Madina, Masjid al-Haram, Masjid an-Nabaviy, ziyorat, sayohat va ziyoratchilar uchun foydali maslahatlar.
 
 Quyidagi qat'iy JSON formatida javob ber:
 {
   "headline": "Qisqa, jozibador sarlavha",
-  "body": "O'zbek adabiy tilida ravon post matni...",
+  "body": "O'zbek adabiy tilida ravon post matni...\n\n📞 Murojaat uchun: +998 88 832 77 00",
   "topic": "Umrah",
   "quality_score": 9,
   "factual_risk": "NONE",
@@ -133,7 +136,8 @@ class AIContentAnalyzer:
             "murojaat uchun", "band qilish", "joyingizni band", "narxi:", "narx:",
             "telefon:", "murojaat:", "@muhtashamadmin", "batafsil ma'lumot",
             "batafsil ma’lumot", "batafsil va band", "joylar soni cheklangan",
-            "instagram", "facebook", "youtube", "tiktok", "t.me/"
+            "instagram", "facebook", "youtube", "tiktok", "t.me/",
+            "manba:", "manba :", "manba", "nurli safar", "muhtasham umra", "muhtasham travel",
         ]
         
         for line in lines:
@@ -154,7 +158,7 @@ class AIContentAnalyzer:
     def _deterministic_fallback(
         self, raw_text: Optional[str], media_type: str, source_title: str, source_rights: str
     ) -> dict:
-        """Rule-based analyzer ensuring high-quality, non-commercial Umrah content."""
+        """Rule-based analyzer ensuring high-quality, non-commercial Umrah content with official contacts."""
         raw = (raw_text or "").strip()
         sanitized = self._clean_and_sanitize_text(raw)
         lower = sanitized.lower()
@@ -184,8 +188,15 @@ class AIContentAnalyzer:
         if has_suspicious:
             score = min(score, 4)
 
-        headline = f"🕋 {source_title}: Ziyorat ma'lumotlari" if is_relevant else "Ma'lumot"
-        body = f"{sanitized}\n\n📌 <i>Muhtasham Travel rasmiy ziyorat xabarnomasi</i>"
+        # Headline without any source channel name
+        headline = "🕋 Umra va Ziyorat Ma'lumotlari" if is_relevant else "Ma'lumot"
+        first_line = sanitized.split('\n')[0].strip() if sanitized else ""
+        if 10 <= len(first_line) <= 80 and not any(ch in first_line for ch in ["http", "@", "+998", "📞", "☎️", "📍"]):
+            headline = first_line
+
+        # Contact footer with official phone number (888327700)
+        phone_contact = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
+        body = f"{sanitized}\n\n📞 Murojaat uchun: {phone_contact}"
 
         decision = "AUTO_PUBLISH" if (score >= 7 and not has_suspicious and not is_pure_ad and source_rights == "VERIFIED") else "REJECT"
         rejection_reason = "Tijoriy reklama yoki kontaktlar" if is_pure_ad else ("Mavzuga mos emas" if not is_relevant else None)

@@ -47,11 +47,12 @@ class Settings(BaseSettings):
     TELEGRAM_API_HASH: str = Field(default="", description="Telegram API Hash")
     TELETHON_SESSION_STRING: str = Field(default="", description="Telethon StringSession token")
 
-    # 6. Deduplication & Storage
+    # 6. Deduplication, Storage & Contacts
     MEDIA_TEMP_DIR: str = Field(default="./temp_media", description="Temporary media directory")
     PHASH_THRESHOLD: int = Field(default=5, description="Max Hamming distance for duplicate images")
     SEMANTIC_THRESHOLD: float = Field(default=0.75, description="Semantic similarity threshold")
     LOG_LEVEL: str = Field(default="INFO", description="Log level")
+    CONTACT_PHONE: str = Field(default="+998 88 832 77 00", description="Contact phone appended to published posts")
 
     @property
     def admin_ids_list(self) -> List[int]:
