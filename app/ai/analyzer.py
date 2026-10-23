@@ -120,16 +120,51 @@ class AIContentAnalyzer:
         except Exception:
             return None
 
+    def _clean_and_sanitize_text(self, text: str) -> str:
+        """Strip external phone numbers, sales CTAs, and third-party social media handles."""
+        import re
+        # Remove phone numbers
+        text = re.sub(r'(\+?998[\s-]?)?\(?\d{2,3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}', '', text)
+        text = re.sub(r'\+?\d{1,3}[\s-]?\d{2,3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}', '', text)
+        
+        lines = text.split("\n")
+        cleaned_lines = []
+        skip_keywords = [
+            "murojaat uchun", "band qilish", "joyingizni band", "narxi:", "narx:",
+            "telefon:", "murojaat:", "@muhtashamadmin", "batafsil ma'lumot",
+            "batafsil ma’lumot", "batafsil va band", "joylar soni cheklangan",
+            "instagram", "facebook", "youtube", "tiktok", "t.me/"
+        ]
+        
+        for line in lines:
+            line_str = line.strip()
+            l_lower = line_str.lower()
+            if any(kw in l_lower for kw in skip_keywords):
+                continue
+            # Filter pure handle or contact lines
+            if line_str.startswith("@") or line_str.startswith("📞") or line_str.startswith("☎️") or line_str.startswith("📱"):
+                continue
+            cleaned_lines.append(line_str)
+            
+        result = "\n".join(l for l in cleaned_lines if l).strip()
+        # Collapse multiple empty lines
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        return result
+
     def _deterministic_fallback(
         self, raw_text: Optional[str], media_type: str, source_title: str, source_rights: str
     ) -> dict:
-        """Rule-based analyzer ensuring 100% offline reliability."""
-        content = (raw_text or "").strip()
-        lower = content.lower()
+        """Rule-based analyzer ensuring high-quality, non-commercial Umrah content."""
+        raw = (raw_text or "").strip()
+        sanitized = self._clean_and_sanitize_text(raw)
+        lower = sanitized.lower()
 
         # Check topic relevance
         is_relevant = any(t in lower for t in APPROVED_TOPICS) or "ziyorat" in lower or "umra" in lower
         topic = "Umrah" if is_relevant else "Boshqa"
+
+        # Check if it was purely a pricing / contact advertisement with no real spiritual/travel content
+        is_pure_ad = len(sanitized) < 40 or ("narxi" in raw.lower() and len(sanitized) < 60)
 
         # Check for unverified suspicious claims
         suspicious_markers = ["100% tekin", "kafolatlangan jannat", "sirli usul", "shoshiling tarqating"]
@@ -137,17 +172,23 @@ class AIContentAnalyzer:
         factual_risk = "SUSPICIOUS" if has_suspicious else "NONE"
 
         # Calculate quality score (0-10)
-        score = 8 if (is_relevant and len(content) > 50) else (5 if is_relevant else 2)
+        if is_pure_ad:
+            score = 3
+        elif is_relevant and len(sanitized) > 60:
+            score = 8
+        elif is_relevant:
+            score = 6
+        else:
+            score = 2
+
         if has_suspicious:
             score = min(score, 4)
 
-        headline = f"✨ {source_title}: Ziyorat yangiliklari" if is_relevant else "Ma'lumot"
-        body = f"{content}\n\n📌 <i>Manba: {source_title}</i>"
+        headline = f"🕋 {source_title}: Ziyorat ma'lumotlari" if is_relevant else "Ma'lumot"
+        body = f"{sanitized}\n\n📌 <i>Muhtasham Travel rasmiy ziyorat xabarnomasi</i>"
 
-        decision = "AUTO_PUBLISH" if (score >= 7 and not has_suspicious and source_rights == "VERIFIED") else (
-            "PENDING_APPROVAL" if score >= 7 else "REJECT"
-        )
-        rejection_reason = "Mavzuga mos emas" if not is_relevant else ("Shubhali ma'lumot" if has_suspicious else None)
+        decision = "AUTO_PUBLISH" if (score >= 7 and not has_suspicious and not is_pure_ad and source_rights == "VERIFIED") else "REJECT"
+        rejection_reason = "Tijoriy reklama yoki kontaktlar" if is_pure_ad else ("Mavzuga mos emas" if not is_relevant else None)
 
         return {
             "headline": headline,
