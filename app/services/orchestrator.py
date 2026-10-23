@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.logging_config import logger
-from app.database.models import SourcePost, ContentItem, SystemLog
+from app.database.models import SourcePost, ContentItem, SystemLog, Source
 from app.sources.manager import SourceManager
 from app.moderation.deduplication import DeduplicationEngine
 from app.moderation.quality import QualityControlService
@@ -33,7 +33,7 @@ class ContentPipelineService:
         logger.info(f"Pipeline boshlandi: SourcePost #{source_post.id} (Source #{source_post.source_id})")
 
         # Step 1: Check legal usage rights
-        source = source_post.source
+        source = await self.session.get(Source, source_post.source_id)
         rights_check = await self.source_manager.check_usage_rights(source.telegram_identifier if source else "")
         if not rights_check["allowed"]:
             logger.warning(f"Post #{source_post.id} rad etildi: {rights_check['notes']}")

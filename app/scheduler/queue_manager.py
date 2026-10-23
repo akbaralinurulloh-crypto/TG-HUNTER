@@ -60,10 +60,18 @@ class QueueScheduler:
                 .limit(1)
             )
             last_scheduled = (await session.execute(last_stmt)).scalars().first()
+            if last_scheduled:
+                if last_scheduled.tzinfo is None:
+                    last_scheduled = last_scheduled.replace(tzinfo=timezone.utc).astimezone(self.tz)
+                else:
+                    last_scheduled = last_scheduled.astimezone(self.tz)
+
             if last_scheduled and last_scheduled > now_tz:
                 slot = last_scheduled + timedelta(minutes=interval_minutes)
+            elif existing_count == 0:
+                slot = now_tz  # Publish immediately if queue is empty
             else:
-                slot = now_tz + timedelta(minutes=5)  # Next available slot
+                slot = now_tz + timedelta(minutes=interval_minutes)
 
         return slot.astimezone(timezone.utc)
 

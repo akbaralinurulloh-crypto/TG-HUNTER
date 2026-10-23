@@ -9,6 +9,7 @@ from app.logging_config import logger, setup_logging
 from app.database.session import init_database, get_db, engine
 from app.database.models import SystemState
 from app.sources.manager import SourceManager
+from app.sources.scraper import TelegramWebScraper
 from app.bot import setup_dispatcher
 from app.publisher.channel_tester import run_channel_diagnostic
 from app.scheduler.queue_manager import QueueScheduler
@@ -65,9 +66,10 @@ class UmrahContentAgent:
         tasks = []
         if self.bot and self.dp:
             tasks.append(asyncio.create_task(self.dp.start_polling(self.bot)))
+            tasks.append(asyncio.create_task(self._source_scraper_loop()))
             tasks.append(asyncio.create_task(self._queue_worker_loop()))
             tasks.append(asyncio.create_task(self._daily_report_loop()))
-            logger.info(f"Bot and Scheduler active. Target channel: {settings.TARGET_CHANNEL}")
+            logger.info(f"Bot, Scraper and Scheduler active. Target channel: {settings.TARGET_CHANNEL}")
 
         try:
             if tasks:
@@ -79,6 +81,20 @@ class UmrahContentAgent:
             logger.info("Application loop cancellation received.")
         finally:
             await self.shutdown()
+
+    async def _source_scraper_loop(self):
+        """Periodically scrape public Telegram source channels and ingest new posts."""
+        logger.info("Source scraper loop started (interval: 180s).")
+        scraper = TelegramWebScraper(bot=self.bot)
+        while self.is_running:
+            try:
+                async with get_db() as session:
+                    new_count = await scraper.scrape_all_active_sources(session)
+                    if new_count > 0:
+                        logger.info(f"{new_count} ta yangi post manbalardan qabul qilindi va tahlil qilindi.")
+            except Exception as e:
+                logger.error(f"Source scraper loop error: {e}")
+            await asyncio.sleep(180)
 
     async def _queue_worker_loop(self):
         """Periodically inspect publish_queue and publish due posts."""

@@ -16,6 +16,7 @@ from app.database.models import (
     PublishedPost,
     SystemLog,
     SystemState,
+    SourcePost,
 )
 
 
@@ -74,7 +75,7 @@ class TelegramPublisher:
         formatted_text = f"🕋 <b>{content_item.headline}</b>\n\n{content_item.body}"
 
         # Resolve media if any from source_post
-        source_post = content_item.source_post
+        source_post = await session.get(SourcePost, content_item.source_post_id) if content_item.source_post_id else None
         media_ref = source_post.media_reference if source_post else None
         media_type = source_post.media_type if source_post else "TEXT"
 

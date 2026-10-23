@@ -79,8 +79,12 @@ class AIContentAnalyzer:
         parsed_data = None
         if self.client:
             try:
-                response = await self._call_gemini_async(prompt)
+                import asyncio
+                response = await asyncio.wait_for(self._call_gemini_async(prompt), timeout=8.0)
                 parsed_data = self._parse_json(response)
+            except asyncio.TimeoutError:
+                logger.warning("Gemini API call timed out (8s limit). Seamlessly falling back to rule engine.")
+                parsed_data = None
             except Exception as e:
                 logger.error(f"Gemini API error during content analysis: {e}")
                 parsed_data = None
