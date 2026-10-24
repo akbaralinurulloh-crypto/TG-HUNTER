@@ -158,7 +158,8 @@ class AIContentAnalyzer:
         cleaned_lines = []
         skip_keywords = [
             "murojaat uchun", "telefon:", "murojaat:", "@muhtashamadmin",
-            "batafsil va band", "instagram", "facebook", "youtube", "tiktok", "t.me/",
+            "batafsil va band", "batafsil ma'lumot", "batafsil ma’lumot", "batafsil ma`lumot",
+            "batafsil malumot", "instagram", "facebook", "youtube", "tiktok", "t.me/",
             "manba:", "manba :", "nurli safar", "muhtasham umra", "muhtasham travel",
         ]
         

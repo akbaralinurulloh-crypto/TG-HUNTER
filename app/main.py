@@ -65,7 +65,7 @@ class UmrahContentAgent:
         # 3. Start Background Loops
         tasks = []
         if self.bot and self.dp:
-            tasks.append(asyncio.create_task(self.dp.start_polling(self.bot)))
+            tasks.append(asyncio.create_task(self._bot_polling_loop()))
             tasks.append(asyncio.create_task(self._source_scraper_loop()))
             tasks.append(asyncio.create_task(self._queue_worker_loop()))
             tasks.append(asyncio.create_task(self._daily_report_loop()))
@@ -73,7 +73,7 @@ class UmrahContentAgent:
 
         try:
             if tasks:
-                await asyncio.gather(*tasks)
+                await asyncio.gather(*tasks, return_exceptions=True)
             else:
                 while self.is_running:
                     await asyncio.sleep(1)
@@ -81,6 +81,18 @@ class UmrahContentAgent:
             logger.info("Application loop cancellation received.")
         finally:
             await self.shutdown()
+
+    async def _bot_polling_loop(self):
+        """Run bot polling with auto-reconnect on network drops or temporary Telegram errors."""
+        logger.info("Bot polling loop started.")
+        while self.is_running:
+            try:
+                await self.dp.start_polling(self.bot, handle_signals=False)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Telegram bot polling error: {e}. Qayta ulanish 5 soniyada...")
+                await asyncio.sleep(5)
 
     async def _source_scraper_loop(self):
         """Periodically scrape public Telegram source channels and ingest new posts."""
@@ -152,8 +164,20 @@ async def main():
     await agent.start()
 
 
+def run_forever():
+    """Supervisor loop that automatically restarts the agent if an unhandled crash occurs."""
+    import time
+    while True:
+        try:
+            asyncio.run(main())
+            break
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Agent process explicitly terminated by user.")
+            break
+        except Exception as e:
+            logger.critical(f"Agent crashed with unhandled error: {e}. Qayta ishga tushish 10 soniyada...")
+            time.sleep(10)
+
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Agent process terminated.")
+    run_forever()

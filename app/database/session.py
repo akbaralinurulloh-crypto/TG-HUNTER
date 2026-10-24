@@ -13,7 +13,7 @@ from app.logging_config import logger
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 engine_kwargs = {}
 if is_sqlite:
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 60.0}
 else:
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_size"] = 10
@@ -61,10 +61,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_database(custom_engine: AsyncEngine = None) -> None:
-    """Create all tables defined in models."""
+    """Create all tables defined in models and configure SQLite WAL mode."""
+    from sqlalchemy import text
     from app.database.models import Base
     target_engine = custom_engine or engine
     logger.info("Initializing database schema...")
     async with target_engine.begin() as conn:
+        if is_sqlite:
+            try:
+                await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                await conn.execute(text("PRAGMA busy_timeout=60000;"))
+            except Exception as e:
+                logger.warning(f"Could not enable WAL mode: {e}")
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database schema initialized.")
+    logger.info("Database schema initialized with WAL mode.")
