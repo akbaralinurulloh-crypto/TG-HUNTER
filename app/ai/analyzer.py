@@ -7,22 +7,20 @@ from app.logging_config import logger
 from app.ai.schemas import AIAnalysisOutput
 
 SYSTEM_INSTRUCTION = """
-Berilgan ruxsatli material asosida o‘zbek tilida ravon, aniq, foydali va tabiiy Telegram posti tayyorla. 
-Mavzuga mos qisqa sarlavha yoz. Asl mazmunni buzma. 
+Kanalga kelgan asl material asosida post tayyorla.
+O‘zingdan hech narsa to‘qima, yolg‘on yoki yangi gap qo‘shma.
+QAT'IY TAQIQLANADI: O'zingdan birorta hadis, diniy hukm yoki fatvo to‘qib yozish qat'iyan man etiladi! Hadis qo‘shma!
 Hech qachon olingan manba yoki kanal nomini ko‘rsatma.
+Begona telefon raqamlar va kontaktlarni olib tashla.
 Post yakuniga faqat quyidagi rasmiy aloqa raqamini qo‘sh:
 📞 Murojaat uchun: +998 88 832 77 00
 
-Manbada yo‘q fakt, narx, sana, mehmonxona nomi, masofa, viza talabi yoki diniy hukmni o‘zingdan qo‘shma. 
-Shubhali ma’lumotlarni fakt sifatida bermagin. 
-Keraksiz takrorlar, ortiqcha emoji va asossiz reklama da’volaridan qoch. 
-
-Mavzular: Umrah, Makka, Madina, Masjid al-Haram, Masjid an-Nabaviy, ziyorat, sayohat va ziyoratchilar uchun foydali maslahatlar.
+Asl mazmunni qanday bo‘lsa shunday saqla. Faqat Umrah, Makka, Madina, ziyorat, sayohat va ziyoratchilar uchun foydali maslahatlarni qoldir.
 
 Quyidagi qat'iy JSON formatida javob ber:
 {
-  "headline": "Qisqa, jozibador sarlavha",
-  "body": "O'zbek adabiy tilida ravon post matni...\n\n📞 Murojaat uchun: +998 88 832 77 00",
+  "headline": "Qisqa sarlavha",
+  "body": "Asl material matni (o'zgarishsiz, toza holda)...\n\n📞 Murojaat uchun: +998 88 832 77 00",
   "topic": "Umrah",
   "quality_score": 9,
   "factual_risk": "NONE",
@@ -72,11 +70,25 @@ class AIContentAnalyzer:
         """
         Analyze and rewrite post content into fluent Uzbek, returning a validated AIAnalysisOutput.
         """
+        raw = (raw_text or "").strip()
+
+        # Guard 1: Textless post (never fabricate text or hadiths for empty media)
+        if not raw or len(raw) < 15:
+            logger.info("Matnsiz yoki juda qisqa post aniqlandi — to'qish taqiqlanganligi sababli rad etildi.")
+            fallback = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
+            return self._enforce_quality_and_rights(fallback, source_rights_status)
+
+        # Guard 2: Strict Hadith prohibition
+        if any(marker in raw.lower() for marker in self.HADITH_MARKERS):
+            logger.info("Hadis aniqlandi — foydalanuvchi talabiga ko'ra rad etildi.")
+            fallback = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
+            return self._enforce_quality_and_rights(fallback, source_rights_status)
+
         prompt = (
             f"Manba: {source_title}\n"
             f"Media turi: {media_type}\n"
             f"Foydalanish huquqi: {source_rights_status}\n\n"
-            f"Material matni:\n{raw_text or '[Matnsiz media post]'}"
+            f"Material matni:\n{raw}"
         )
 
         parsed_data = None
@@ -85,6 +97,12 @@ class AIContentAnalyzer:
                 import asyncio
                 response = await asyncio.wait_for(self._call_gemini_async(prompt), timeout=8.0)
                 parsed_data = self._parse_json(response)
+                # Ensure Gemini didn't fabricate hadiths
+                if parsed_data:
+                    gen_text = (parsed_data.get("body", "") + " " + parsed_data.get("headline", "")).lower()
+                    if any(marker in gen_text for marker in self.HADITH_MARKERS):
+                        logger.warning("AI javobida hadis aniqlandi — rad etilmoqda.")
+                        parsed_data = None
             except asyncio.TimeoutError:
                 logger.warning("Gemini API call timed out (8s limit). Seamlessly falling back to rule engine.")
                 parsed_data = None
@@ -123,8 +141,14 @@ class AIContentAnalyzer:
         except Exception:
             return None
 
+    HADITH_MARKERS = [
+        "hadis", "rivoyat", "payg'ambarimiz", "payg‘ambarimiz", "rasululloh",
+        "sollallohu alayhi vasallam", "sahoba", "hadisi sharif", "imom buxoriy",
+        "buxoriy rivoyati", "muslim rivoyati", "termiziy rivoyati",
+    ]
+
     def _clean_and_sanitize_text(self, text: str) -> str:
-        """Strip external phone numbers, sales CTAs, and third-party social media handles."""
+        """Strip external phone numbers, competitor contacts, and third-party social media handles."""
         import re
         # Remove phone numbers
         text = re.sub(r'(\+?998[\s-]?)?\(?\d{2,3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}', '', text)
@@ -133,11 +157,9 @@ class AIContentAnalyzer:
         lines = text.split("\n")
         cleaned_lines = []
         skip_keywords = [
-            "murojaat uchun", "band qilish", "joyingizni band", "narxi:", "narx:",
-            "telefon:", "murojaat:", "@muhtashamadmin", "batafsil ma'lumot",
-            "batafsil ma’lumot", "batafsil va band", "joylar soni cheklangan",
-            "instagram", "facebook", "youtube", "tiktok", "t.me/",
-            "manba:", "manba :", "manba", "nurli safar", "muhtasham umra", "muhtasham travel",
+            "murojaat uchun", "telefon:", "murojaat:", "@muhtashamadmin",
+            "batafsil va band", "instagram", "facebook", "youtube", "tiktok", "t.me/",
+            "manba:", "manba :", "nurli safar", "muhtasham umra", "muhtasham travel",
         ]
         
         for line in lines:
@@ -158,8 +180,39 @@ class AIContentAnalyzer:
     def _deterministic_fallback(
         self, raw_text: Optional[str], media_type: str, source_title: str, source_rights: str
     ) -> dict:
-        """Rule-based analyzer ensuring high-quality, non-commercial Umrah content with official contacts."""
+        """Rule-based analyzer ensuring genuine channel Umrah content without hallucination or hadiths."""
         raw = (raw_text or "").strip()
+
+        # Rule 1: Textless post rejection (never invent text or hadith for a picture)
+        if not raw or len(raw) < 15:
+            return {
+                "headline": "Rad etildi",
+                "body": "",
+                "topic": "Boshqa",
+                "quality_score": 0,
+                "factual_risk": "NONE",
+                "media_action": "IGNORE",
+                "rights_status": source_rights,
+                "publish_decision": "REJECT",
+                "rejection_reason": "Matnsiz media post (o'zidan to'qib yozish taqiqlangan)",
+            }
+
+        # Rule 2: Strict Hadith prohibition (user requested: hadis yozish mumkin emas)
+        raw_lower = raw.lower()
+        if any(marker in raw_lower for marker in self.HADITH_MARKERS):
+            logger.info("Hadis aniqlandi — foydalanuvchi talabiga ko'ra post rad etildi.")
+            return {
+                "headline": "Rad etildi (Hadis)",
+                "body": raw,
+                "topic": "Hadis",
+                "quality_score": 0,
+                "factual_risk": "SUSPICIOUS",
+                "media_action": "IGNORE",
+                "rights_status": source_rights,
+                "publish_decision": "REJECT",
+                "rejection_reason": "Hadis yozish qat'iyan taqiqlangan (Foydalanuvchi talabi)",
+            }
+
         sanitized = self._clean_and_sanitize_text(raw)
         lower = sanitized.lower()
 
@@ -167,8 +220,8 @@ class AIContentAnalyzer:
         is_relevant = any(t in lower for t in APPROVED_TOPICS) or "ziyorat" in lower or "umra" in lower
         topic = "Umrah" if is_relevant else "Boshqa"
 
-        # Check if it was purely a pricing / contact advertisement with no real spiritual/travel content
-        is_pure_ad = len(sanitized) < 40 or ("narxi" in raw.lower() and len(sanitized) < 60)
+        # Check if too short after sanitizing contacts
+        is_too_short = len(sanitized) < 30
 
         # Check for unverified suspicious claims
         suspicious_markers = ["100% tekin", "kafolatlangan jannat", "sirli usul", "shoshiling tarqating"]
@@ -176,12 +229,12 @@ class AIContentAnalyzer:
         factual_risk = "SUSPICIOUS" if has_suspicious else "NONE"
 
         # Calculate quality score (0-10)
-        if is_pure_ad:
+        if is_too_short:
             score = 3
         elif is_relevant and len(sanitized) > 60:
             score = 8
         elif is_relevant:
-            score = 6
+            score = 7
         else:
             score = 2
 
@@ -189,17 +242,17 @@ class AIContentAnalyzer:
             score = min(score, 4)
 
         # Headline without any source channel name
-        headline = "🕋 Umra va Ziyorat Ma'lumotlari" if is_relevant else "Ma'lumot"
+        headline = "Umra va Ziyorat Ma'lumotlari" if is_relevant else "Ma'lumot"
         first_line = sanitized.split('\n')[0].strip() if sanitized else ""
-        if 10 <= len(first_line) <= 80 and not any(ch in first_line for ch in ["http", "@", "+998", "📞", "☎️", "📍"]):
+        if 10 <= len(first_line) <= 80 and not any(ch in first_line for ch in ["http", "@", "+998", "📞", "☎️", "📍", "💰"]):
             headline = first_line
 
         # Contact footer with official phone number (888327700)
         phone_contact = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
         body = f"{sanitized}\n\n📞 Murojaat uchun: {phone_contact}"
 
-        decision = "AUTO_PUBLISH" if (score >= 7 and not has_suspicious and not is_pure_ad and source_rights == "VERIFIED") else "REJECT"
-        rejection_reason = "Tijoriy reklama yoki kontaktlar" if is_pure_ad else ("Mavzuga mos emas" if not is_relevant else None)
+        decision = "AUTO_PUBLISH" if (score >= 7 and not has_suspicious and not is_too_short and source_rights == "VERIFIED") else "REJECT"
+        rejection_reason = "Yetarlicha ma'lumot yo'q" if is_too_short else ("Mavzuga mos emas" if not is_relevant else None)
 
         return {
             "headline": headline,
@@ -245,7 +298,7 @@ class AIContentAnalyzer:
         elif topic.lower() not in APPROVED_TOPICS and not any(t in topic.lower() for t in ["umra", "ziyorat", "sayohat"]):
             logger.info(f"Post mavzusi ({topic}) Umrah va sayohatga mos emas deb topildi.")
             decision = "REJECT"
-            rejection_reason = "Umrah yoki sayohat mavzusiga aloqador emas"
+            rejection_reason = rejection_reason or "Umrah yoki sayohat mavzusiga aloqador emas"
 
         # Rule 4: Quality score threshold
         elif score < 7:

@@ -93,6 +93,27 @@ class TelegramPublisher:
 
         formatted_text = f"🕋 <b>{headline}</b>\n\n{body}"
 
+        # Safety Guard 1: Strict Hadith Prohibition
+        hadith_markers = [
+            "hadis", "rivoyat", "payg'ambarimiz", "payg‘ambarimiz", "rasululloh",
+            "sollallohu alayhi vasallam", "sahoba", "hadisi sharif", "imom buxoriy", "buxoriy rivoyati"
+        ]
+        if any(marker in formatted_text.lower() for marker in hadith_markers):
+            logger.warning(f"ContentItem #{content_item_id} hadis aniqlangani sababli nashr to'xtatildi (hadis yozish taqiqlangan).")
+            content_item.status = "REJECTED"
+            content_item.rejection_reason = "Hadis yozish taqiqlangan"
+            await session.commit()
+            return False
+
+        # Safety Guard 2: Textless / Empty Post Guard
+        clean_content = body.replace(contact_phone, "").replace("📞 Murojaat uchun:", "").strip()
+        if not clean_content:
+            logger.warning(f"ContentItem #{content_item_id} matnsiz bo'lgani sababli nashr to'xtatildi.")
+            content_item.status = "REJECTED"
+            content_item.rejection_reason = "Matnsiz post"
+            await session.commit()
+            return False
+
         # Resolve media if any from source_post
         source_post = await session.get(SourcePost, content_item.source_post_id) if content_item.source_post_id else None
         media_ref = source_post.media_reference if source_post else None

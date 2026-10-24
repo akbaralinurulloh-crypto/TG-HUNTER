@@ -88,3 +88,30 @@ def test_quality_control_spam_detection():
     approved, reason = QualityControlService.inspect_content(ai_out)
     assert approved is False
     assert reason is not None
+
+
+@pytest.mark.asyncio
+async def test_hadith_strictly_rejected():
+    """Test that hadith-bearing content is strictly rejected per user directive."""
+    analyzer = AIContentAnalyzer()
+    res = await analyzer.analyze_and_rewrite(
+        raw_text="Rasululloh sollallohu alayhi vasallam marhamat qildilar: Umra keyingi Umragacha bo'lgan gunohlarga kafforatdir.",
+        source_title="Nurli Safar",
+        source_rights_status="VERIFIED",
+    )
+    assert res.publish_decision == "REJECT"
+    assert "hadis" in (res.rejection_reason or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_textless_post_rejected():
+    """Test that empty or textless posts are strictly rejected without fabricating captions."""
+    analyzer = AIContentAnalyzer()
+    res = await analyzer.analyze_and_rewrite(
+        raw_text="",
+        source_title="Nurli Safar",
+        source_rights_status="VERIFIED",
+    )
+    assert res.publish_decision == "REJECT"
+    assert "matnsiz" in (res.rejection_reason or "").lower()
+

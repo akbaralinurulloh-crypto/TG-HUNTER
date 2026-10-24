@@ -17,15 +17,17 @@ async def test_post():
     async with get_db() as session:
         ci = ContentItem(
             source_post_id=1,
-            headline="Umra Ziyoratining Fazilatlari",
+            headline="Umra Safarlari va Dasturlari",
             body=(
-                "Rasululloh sollallohu alayhi vasallam marhamat qildilar: "
-                "«Umra keyingi Umragacha bo'lgan gunohlarga kafforatdir. "
-                "Qabul bo'lgan hajning mukofoti esa faqat jannatdir» (Imom Buxoriy rivoyati).\n\n"
-                "Alloh taolo barchamizga Baytulloh ziyoratini nasib aylasin!"
+                "Muborak Makka va Madina ziyoratiga taklif etamiz!\n\n"
+                "Paket ichiga kiradi:\n"
+                "• Qulay va zamonaviy mehmonxonalar\n"
+                "• Aviachiptalar va viza rasmiylashtirish\n"
+                "• Tajribali guruh rahbarlari va ziyorat sayohatlari\n\n"
+                "📞 Murojaat uchun: +998 88 832 77 00"
             ),
             topic="Umrah",
-            quality_score=10,
+            quality_score=9,
             factual_risk="NONE",
             rights_status="VERIFIED",
             publish_decision="AUTO_PUBLISH",
