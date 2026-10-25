@@ -114,30 +114,30 @@ class AIContentAnalyzer:
 
             prompt = (
                 "Sen Muhtasham Travel agentligi uchun professional kontent tahlilchisisan.\n"
-                "Ushbu media (rasm yoki video) va uning atrofidagi ma'lumotlarni qat'iy tekshir:\n"
-                "1. Ekrandagi yozuvlarda, kiyimlarda, sumkalarda, orqa fonda yoki videoning audio ovozida "
-                "'Nurli Safar' yoki har qanday begona firma/brend nomi, logotipi bormi?\n"
-                "2. '+998 88 832 77 00' dan boshqa birorta begona telefon raqami ko'rsatilganmi?\n"
+                "Ushbu media (rasm yoki video) va uning atrofidagi ma'lumotlarni juda qat'iy tekshir:\n"
+                "1. Ekrandagi yozuvlarda, ziyoratchilarning kiyimlari, sumkalari, beydjiklarida, orqa fonda yoki "
+                "videoning audio ovozida 'Nurli Safar' yoki boshqa har qanday begona firma/brend nomi yoki logotipi bormi?\n"
+                "2. '+998 88 832 77 00' yoki '888327700' dan boshqa birorta begona telefon raqami ko'rsatilganmi (hatto sumkalarda yoki fonda bo'lsa ham)?\n"
                 "3. Videoning audio ovozida 'Nurli Safar' yoki begona kompaniya haqida gapirilganmi?\n"
                 "4. QAT'IY TAQIQLANADI: Birorta hadis to'qima va hadis qo'shma! Hadis yozish qat'iyan taqiqlangan!\n\n"
                 "XULOSA QOIDALARI:\n"
-                "- Agar 1, 2 yoki 3-bandlardan birortasida begona belgi, raqam yoki Nurli Safar aniqlansa:\n"
-                "  \"has_competitor\": true, \"publish_decision\": \"REJECT\", \"rejection_reason\": \"Rasm yoki videoda Nurli Safar/begona belgi yoki telefon raqami aniqlandi\"\n"
-                "- Agar media toza bo'lsa va Umra/ziyorat/sayohat/Muhtasham Travel mavzusiga mos bo'lsa:\n"
+                "- Agar 1, 2 yoki 3-bandlardan birortasida 'Nurli Safar', begona firma, begona logotip yoki begona telefon raqam bo'lsa:\n"
+                "  \"has_competitor\": true, \"publish_decision\": \"REJECT\", \"rejection_reason\": \"Rasm yoki videoda begona belgi, firma nomi yoki telefon raqami aniqlandi\"\n"
+                "- Faqat va faqat hech qanday begona firma belgisi va begona raqamsiz toza media bo'lsagina:\n"
                 "  \"has_competitor\": false, \"publish_decision\": \"AUTO_PUBLISH\", \"topic\": \"Umrah\", \"quality_score\": 9,\n"
                 "  \"headline\": \"Mavzuga yoki tasvirga mos qisqa, go'zal sarlavha\",\n"
                 "  \"body\": \"Tasvirga mos, samimiy, chiroyli va ta'sirli o'zbek tilidagi izoh matni...\\n\\n📞 Murojaat uchun: +998 88 832 77 00\"\n\n"
                 "Quyidagi JSON formatida javob ber:\n"
                 "{\n"
-                "  \"has_competitor\": false,\n"
+                "  \"has_competitor\": true/false,\n"
                 "  \"headline\": \"...\",\n"
                 "  \"body\": \"...\\n\\n📞 Murojaat uchun: +998 88 832 77 00\",\n"
                 "  \"topic\": \"Umrah\",\n"
                 "  \"quality_score\": 9,\n"
                 "  \"factual_risk\": \"NONE\",\n"
                 "  \"media_action\": \"USE_ORIGINAL\",\n"
-                "  \"publish_decision\": \"AUTO_PUBLISH\",\n"
-                "  \"rejection_reason\": null\n"
+                "  \"publish_decision\": \"AUTO_PUBLISH\" yoki \"REJECT\",\n"
+                "  \"rejection_reason\": null yoki \"sabab\"\n"
                 "}"
             )
 
@@ -158,24 +158,31 @@ class AIContentAnalyzer:
                 return None
 
             # Safety check 1: Competitor mark
-            if data.get("has_competitor") is True:
+            if data.get("has_competitor") is True or str(data.get("publish_decision", "")).upper() == "REJECT":
                 logger.info(f"Rasm yoki videoda raqobatchi belgisi/nomi aniqlandi: {data.get('rejection_reason')}")
                 data["publish_decision"] = "REJECT"
+                data["quality_score"] = 0
                 data["rejection_reason"] = data.get("rejection_reason") or "Rasm yoki videoda Nurli Safar/begona belgi yoki telefon raqami aniqlandi"
 
+            headline = str(data.get("headline") or "Umra va Ziyorat")
+            body = str(data.get("body") or "")
+
             # Safety check 2: Hadith prohibition
-            combined = (data.get("headline", "") + " " + data.get("body", "")).lower()
+            combined = (headline + " " + body).lower()
             if any(marker in combined for marker in self.HADITH_MARKERS):
                 logger.warning("Generatsiya qilingan izohda hadis aniqlandi — darhol rad etilmoqda.")
                 data["publish_decision"] = "REJECT"
+                data["quality_score"] = 0
                 data["rejection_reason"] = "Hadis yozish qat'iyan taqiqlangan (Foydalanuvchi talabi)"
 
-            # Ensure contact phone is appended
-            phone_contact = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
-            body = data.get("body", "")
-            if phone_contact not in body and "888327700" not in body and "88 832 77 00" not in body:
-                data["body"] = f"{body}\n\n📞 Murojaat uchun: {phone_contact}"
+            # Ensure contact phone is appended if auto publish
+            if data.get("publish_decision") == "AUTO_PUBLISH":
+                phone_contact = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
+                if phone_contact not in body and "888327700" not in body and "88 832 77 00" not in body:
+                    body = f"{body}\n\n📞 Murojaat uchun: {phone_contact}".strip()
 
+            data["headline"] = headline
+            data["body"] = body
             data["rights_status"] = source_rights_status
             return data
 
