@@ -52,81 +52,180 @@ class AIContentAnalyzer:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.api_key)
-                self.client = genai.GenerativeModel(
-                    model_name=self.model_name,
-                    system_instruction=SYSTEM_INSTRUCTION,
-                )
+                self.client = genai.GenerativeModel(model_name=self.model_name)
                 logger.info(f"Gemini AI client initialized with model: {self.model_name}")
             except Exception as e:
                 logger.warning(f"Could not initialize Gemini AI client: {e}")
+
+    def _extract_video_frames(self, video_path: str, max_frames: int = 3):
+        """Extract representative frames from a video file using OpenCV."""
+        import cv2
+        from PIL import Image
+        cap = cv2.VideoCapture(video_path)
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frames = []
+        if total > 0:
+            step = max(1, total // (max_frames + 1))
+            for i in range(1, max_frames + 1):
+                idx = min(step * i, total - 1)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if ret:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frames.append(Image.fromarray(rgb))
+        cap.release()
+        return frames
+
+    async def _analyze_multimodal_media(
+        self,
+        media_path: str,
+        media_type: str,
+        raw_text: str,
+        source_title: str,
+        source_rights_status: str,
+    ) -> Optional[dict]:
+        """
+        Multimodal analysis of image/video:
+        1. Check for competitor text/logo ('Nurli Safar' or others) on screen, on bags, on clothes, in audio.
+        2. Check for phone numbers other than user's official phone (+998 88 832 77 00).
+        3. Check audio/speech for competitor mentions.
+        4. Strictly prohibit hadiths.
+        5. If clean, generate a beautiful, reverent, context-appropriate Uzbek caption for the channel.
+        """
+        import os
+        import asyncio
+        from PIL import Image
+
+        try:
+            parts = []
+            if media_type == "PHOTO" and os.path.exists(media_path):
+                parts.append(Image.open(media_path))
+            elif media_type == "VIDEO" and os.path.exists(media_path):
+                size_mb = os.path.getsize(media_path) / (1024 * 1024)
+                if size_mb <= 15:
+                    with open(media_path, "rb") as f:
+                        parts.append({"mime_type": "video/mp4", "data": f.read()})
+                else:
+                    frames = self._extract_video_frames(media_path, max_frames=3)
+                    parts.extend(frames)
+
+            if not parts:
+                return None
+
+            prompt = (
+                "Sen Muhtasham Travel agentligi uchun professional kontent tahlilchisisan.\n"
+                "Ushbu media (rasm yoki video) va uning atrofidagi ma'lumotlarni qat'iy tekshir:\n"
+                "1. Ekrandagi yozuvlarda, kiyimlarda, sumkalarda, orqa fonda yoki videoning audio ovozida "
+                "'Nurli Safar' yoki har qanday begona firma/brend nomi, logotipi bormi?\n"
+                "2. '+998 88 832 77 00' dan boshqa birorta begona telefon raqami ko'rsatilganmi?\n"
+                "3. Videoning audio ovozida 'Nurli Safar' yoki begona kompaniya haqida gapirilganmi?\n"
+                "4. QAT'IY TAQIQLANADI: Birorta hadis to'qima va hadis qo'shma! Hadis yozish qat'iyan taqiqlangan!\n\n"
+                "XULOSA QOIDALARI:\n"
+                "- Agar 1, 2 yoki 3-bandlardan birortasida begona belgi, raqam yoki Nurli Safar aniqlansa:\n"
+                "  \"has_competitor\": true, \"publish_decision\": \"REJECT\", \"rejection_reason\": \"Rasm yoki videoda Nurli Safar/begona belgi yoki telefon raqami aniqlandi\"\n"
+                "- Agar media toza bo'lsa va Umra/ziyorat/sayohat/Muhtasham Travel mavzusiga mos bo'lsa:\n"
+                "  \"has_competitor\": false, \"publish_decision\": \"AUTO_PUBLISH\", \"topic\": \"Umrah\", \"quality_score\": 9,\n"
+                "  \"headline\": \"Mavzuga yoki tasvirga mos qisqa, go'zal sarlavha\",\n"
+                "  \"body\": \"Tasvirga mos, samimiy, chiroyli va ta'sirli o'zbek tilidagi izoh matni...\\n\\n📞 Murojaat uchun: +998 88 832 77 00\"\n\n"
+                "Quyidagi JSON formatida javob ber:\n"
+                "{\n"
+                "  \"has_competitor\": false,\n"
+                "  \"headline\": \"...\",\n"
+                "  \"body\": \"...\\n\\n📞 Murojaat uchun: +998 88 832 77 00\",\n"
+                "  \"topic\": \"Umrah\",\n"
+                "  \"quality_score\": 9,\n"
+                "  \"factual_risk\": \"NONE\",\n"
+                "  \"media_action\": \"USE_ORIGINAL\",\n"
+                "  \"publish_decision\": \"AUTO_PUBLISH\",\n"
+                "  \"rejection_reason\": null\n"
+                "}"
+            )
+
+            loop = asyncio.get_running_loop()
+            response = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self.client.generate_content(
+                        [prompt] + parts,
+                        generation_config={"temperature": 0.2, "response_mime_type": "application/json"},
+                    )
+                ),
+                timeout=25.0
+            )
+
+            data = self._parse_json(response.text)
+            if not data:
+                return None
+
+            # Safety check 1: Competitor mark
+            if data.get("has_competitor") is True:
+                logger.info(f"Rasm yoki videoda raqobatchi belgisi/nomi aniqlandi: {data.get('rejection_reason')}")
+                data["publish_decision"] = "REJECT"
+                data["rejection_reason"] = data.get("rejection_reason") or "Rasm yoki videoda Nurli Safar/begona belgi yoki telefon raqami aniqlandi"
+
+            # Safety check 2: Hadith prohibition
+            combined = (data.get("headline", "") + " " + data.get("body", "")).lower()
+            if any(marker in combined for marker in self.HADITH_MARKERS):
+                logger.warning("Generatsiya qilingan izohda hadis aniqlandi — darhol rad etilmoqda.")
+                data["publish_decision"] = "REJECT"
+                data["rejection_reason"] = "Hadis yozish qat'iyan taqiqlangan (Foydalanuvchi talabi)"
+
+            # Ensure contact phone is appended
+            phone_contact = getattr(settings, "CONTACT_PHONE", "+998 88 832 77 00")
+            body = data.get("body", "")
+            if phone_contact not in body and "888327700" not in body and "88 832 77 00" not in body:
+                data["body"] = f"{body}\n\n📞 Murojaat uchun: {phone_contact}"
+
+            data["rights_status"] = source_rights_status
+            return data
+
+        except Exception as e:
+            logger.error(f"Multimodal media analysis error for {media_path}: {e}")
+            return None
 
     async def analyze_and_rewrite(
         self,
         raw_text: Optional[str],
         media_type: str = "TEXT",
+        media_reference: Optional[str] = None,
         source_title: str = "Muhtasham",
         source_rights_status: str = "VERIFIED",
     ) -> AIAnalysisOutput:
         """
         Analyze and rewrite post content into fluent Uzbek, returning a validated AIAnalysisOutput.
+        Supports multimodal inspection of images and videos.
         """
+        import os
         raw = (raw_text or "").strip()
 
-        # Guard 1: Textless post (never fabricate text or hadiths for empty media)
-        if not raw or len(raw) < 15:
-            logger.info("Matnsiz yoki juda qisqa post aniqlandi — to'qish taqiqlanganligi sababli rad etildi.")
-            fallback = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
-            return self._enforce_quality_and_rights(fallback, source_rights_status)
-
-        # Guard 2: Strict Hadith prohibition
+        # Guard 1: Strict Hadith prohibition on raw_text
         if any(marker in raw.lower() for marker in self.HADITH_MARKERS):
             logger.info("Hadis aniqlandi — foydalanuvchi talabiga ko'ra rad etildi.")
             fallback = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
             return self._enforce_quality_and_rights(fallback, source_rights_status)
 
-        prompt = (
-            f"Manba: {source_title}\n"
-            f"Media turi: {media_type}\n"
-            f"Foydalanish huquqi: {source_rights_status}\n\n"
-            f"Material matni:\n{raw}"
-        )
+        # Guard 2: Media with photo or video inspection
+        has_media = bool(media_reference and os.path.exists(media_reference))
+        if has_media and media_type in ("PHOTO", "VIDEO") and self.client:
+            parsed_data = await self._analyze_multimodal_media(
+                media_path=media_reference,
+                media_type=media_type,
+                raw_text=raw,
+                source_title=source_title,
+                source_rights_status=source_rights_status,
+            )
+            if parsed_data:
+                return self._enforce_quality_and_rights(parsed_data, source_rights_status)
 
-        parsed_data = None
-        if self.client:
-            try:
-                import asyncio
-                response = await asyncio.wait_for(self._call_gemini_async(prompt), timeout=8.0)
-                parsed_data = self._parse_json(response)
-                # Ensure Gemini didn't fabricate hadiths
-                if parsed_data:
-                    gen_text = (parsed_data.get("body", "") + " " + parsed_data.get("headline", "")).lower()
-                    if any(marker in gen_text for marker in self.HADITH_MARKERS):
-                        logger.warning("AI javobida hadis aniqlandi — rad etilmoqda.")
-                        parsed_data = None
-            except asyncio.TimeoutError:
-                logger.warning("Gemini API call timed out (8s limit). Seamlessly falling back to rule engine.")
-                parsed_data = None
-            except Exception as e:
-                logger.error(f"Gemini API error during content analysis: {e}")
-                parsed_data = None
+        # Guard 3: Textless post without verifiable media
+        if not raw or len(raw) < 15:
+            logger.info("Matnsiz yoki juda qisqa post aniqlandi — to'qish taqiqlanganligi sababli rad etildi.")
+            fallback = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
+            return self._enforce_quality_and_rights(fallback, source_rights_status)
 
-        if not parsed_data:
-            parsed_data = self._deterministic_fallback(raw_text, media_type, source_title, source_rights_status)
-
-        # Enforce all safety and quality rules
+        # Standard text post processing
+        parsed_data = self._deterministic_fallback(raw, media_type, source_title, source_rights_status)
         return self._enforce_quality_and_rights(parsed_data, source_rights_status)
-
-    async def _call_gemini_async(self, prompt: str) -> str:
-        import asyncio
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: self.client.generate_content(
-                prompt,
-                generation_config={"temperature": 0.2, "response_mime_type": "application/json"},
-            ),
-        )
-        return response.text
 
     def _parse_json(self, text: str) -> Optional[dict]:
         try:

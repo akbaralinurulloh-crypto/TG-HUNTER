@@ -88,6 +88,7 @@ class ContentPipelineService:
         ai_res = await self.ai_analyzer.analyze_and_rewrite(
             raw_text=source_post.original_text,
             media_type=source_post.media_type,
+            media_reference=source_post.media_reference,
             source_title=source_title,
             source_rights_status=source.rights_status if source else "VERIFIED",
         )

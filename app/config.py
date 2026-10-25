@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # 3. AI Provider (Gemini / OpenAI)
     GEMINI_API_KEY: str = Field(default="", description="Google Gemini API Key")
-    AI_MODEL_NAME: str = Field(default="gemini-1.5-flash", description="AI Model Name")
+    AI_MODEL_NAME: str = Field(default="gemini-3.5-flash", description="AI Model Name")
     OPENAI_API_KEY: str = Field(default="", description="Optional OpenAI API Key")
 
     # 4. Scheduling & Limits (Asia/Tashkent)

@@ -115,3 +115,25 @@ async def test_textless_post_rejected():
     assert res.publish_decision == "REJECT"
     assert "matnsiz" in (res.rejection_reason or "").lower()
 
+
+@pytest.mark.asyncio
+async def test_multimodal_clean_media_approved():
+    """Test that clean media without competitor marks generates a beautiful caption."""
+    import os
+    analyzer = AIContentAnalyzer()
+    clean_media = "./temp_media/muhtashamtravel_8406.jpg"
+    if os.path.exists(clean_media):
+        res = await analyzer.analyze_and_rewrite(
+            raw_text="Juma muborak!",
+            media_type="PHOTO",
+            media_reference=clean_media,
+            source_title="Muhtasham",
+            source_rights_status="VERIFIED",
+        )
+        assert res.publish_decision == "AUTO_PUBLISH"
+        assert "+998 88 832 77 00" in res.body
+        # Strictly no hadiths
+        hadith_markers = ["hadis", "rivoyat", "rasululloh", "payg'ambar", "payg‘ambar"]
+        assert not any(m in res.body.lower() for m in hadith_markers)
+
+
