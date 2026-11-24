@@ -138,13 +138,19 @@ async def handle_message(text: str, ctx: AdminContext, reply_to_text: str | None
     if re.search(r"\b(?:dry\s*run(?:ni)?|sinov\s*rejimini?|test\s*rejimini?)\s*(?:o['’`]?chir|ochir|off|to['’`]?xtat)\b|\b(?:jonli\s*rejim(?:ga|ni)?)\s*(?:o['’`]?t|yoq|boshla|qil)\b|\b(?:dry\s*run\s*off|jonli\s*rejim)\b", cleaned):
         return await handle_command("dryrun", ["off"], ctx)
 
-    # 3. Pauza
-    if re.search(r"\b(?:pauza(?:ga)?(?:\s*qo['’`]?y)?|to['’`]?xtat(?:ib\s*tur)?|botni\s*to['’`]?xtat|toxtat)\b", cleaned):
-        return await handle_command("pause", [], ctx)
-
-    # 4. Davom ettirish
-    if re.search(r"\b(?:davom\s*et(?:tir)?|ishla(?:yver)?|boshla|davom)\b", cleaned):
+    # 3. Davom ettirish / Pauzani o'chirish (pauza so'zidan OLDIN tekshiriladi!)
+    if re.search(
+        r"\b(?:pauza(?:ni)?\s*(?:o['’`]?chir(?:ilsin)?|ochir(?:ilsin)?|bekor\s*qil|yech|olib\s*tashla)|davom\s*et(?:tir)?|ishla(?:yver)?|boshla|davom)\b",
+        cleaned,
+    ):
         return await handle_command("resume", [], ctx)
+
+    # 4. Pauza (savollar bundan mustasno: 'nimaga/nega pauza')
+    if not re.search(r"\b(?:nimaga|nega|nima\s*uchun|qanaqa)\b", cleaned) and re.search(
+        r"\b(?:pauza(?:ga)?(?:\s*qo['’`]?y)?|to['’`]?xtat(?:ib\s*tur)?|botni\s*to['’`]?xtat|toxtat)\b",
+        cleaned,
+    ):
+        return await handle_command("pause", [], ctx)
 
     # 5. Holat / Status
     if re.search(r"\b(?:holat|status|ahvol|qalay|qanday|nima\s*gap)\b", cleaned):
