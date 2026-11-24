@@ -1,0 +1,88 @@
+timezone: Asia/Tashkent
+report_times: ["08:00", "13:00", "20:00"]
+instagram_url: "https://www.instagram.com/muhtasham_travel/"
+
+channel_topic: |
+  QORALAMA (kanallarning nomidan taxmin qilingan; tasdiqlang yoki tahrir qiling):
+  Kanal: @muhtashamtraveluzz — umra, haj va ziyorat safarlari haqida.
+  Yaxshi post: Makka va Madinadagi jonli holat, ziyorat qadamjolaridagi go'zal manzara,
+  ziyoratchilar jarayoni, quvonchi va safar ruhiyati, sifatli rasm va videolar.
+  Yomon post: safarga aloqasi yo'q kontent, boshqa kompaniyalarning reklamasi va narxlari,
+  guruhdagi ichki operatsion/tashkiliy e'lonlar (avtobusga yig'ilish, mehmonxona foyesida to'planish,
+  ovqat, xonalar, domla bilan kelganlarga chaqiriqlar — bular kanalga MUTLAQO MOS EMAS),
+  mediasiz quruq matnlar, siyosat, tasdiqlanmagan mish-mish, boshqa kanalga chaqiruv.
+  Auditoriya: umra va ziyoratga borishni rejalashtirayotgan yoki borib kelgan o'zbek tilli odamlar.
+
+scoring:
+  min_score: 7.0
+  weights:            # yig'indisi 1.0 bo'lishi shart
+    topic_fit: 0.30
+    quality: 0.25
+    audience_interest: 0.25
+    media_quality: 0.20
+
+watcher:
+  catch_up: true      # o'chiq turgan vaqtdagi xabarlarni ham olish (Telethon catch_up)
+  include_groups: true # Guruhlarni ham (masalan: @MuhtashamUmra) kuzatish va postlarini qabul qilish
+  poll_window_hours: 96 # So'nggi 4 kunlik (96 soat) xabarlarni ham tekshirib olish
+  poll_minutes: 5     # Manbalarni har 5 daqiqada tekshirish
+
+caption:
+  max_length: 1024
+  max_attempts: 2
+  max_sentences: 4    # 3-4 jumla yetarli (imotsional, hadissiz)
+
+# Q2: izohda bo'lmasligi shart bo'lgan kalit so'zlar (kichik harf, lotin+kirill)
+banned_caption_keywords:
+  - hadis
+  - hadith
+  - rivoyat
+  - sahih
+  - sanad
+  - s.a.v
+  - alayhissalom
+  - payg'ambar
+  - paygambar
+  - хадис
+  - ривоят
+  - саҳиҳ
+  - санад
+  - алайҳиссалом
+  - пайғамбар
+  - nurli safar
+  - нурли сафар
+  - nurlisafar
+  - birodar
+  - birodarlar
+  - birodarlarimiz
+  - birodarimiz
+  - биродар
+  - биродарлар
+  - биродарларимиз
+  - биродаримиз
+
+kill_switch:
+  max_consecutive_errors: 5
+
+llm:
+  provider: gemini            # gemini | anthropic
+  gemini_model: gemini-3.5-flash-lite
+  gemini_fallback_models: [gemini-3.1-flash-lite, gemini-3.1-flash-lite-preview, gemini-3.5-flash, gemini-3.8-flash]
+  anthropic_model: claude-sonnet-5-5
+  max_images: 6               # bitta so'rovga maks. rasm/kadr soni
+  timeout_seconds: 90
+  max_retries: 3
+
+media:
+  sample_interval: 0.5        # video: har necha soniyada kadr OCR qilinadi
+  max_frames: 120
+  max_video_seconds: 300
+  max_video_mb: 45            # Telegram Bot API 50 MB dan kattasini yubora olmaydi
+  max_cover_fraction: 0.30    # kadrning shundan ko'p qismini yopish kerak bo'lsa post rad etiladi
+  logo_check: true            # logotip/suv belgisi (vizual LLM). Kvotani tejash uchun false qilish mumkin, lekin logolar o'tib ketadi
+
+pipeline:
+  defer_max_attempts: 5       # LLM vaqtincha ishlamasa (kvota/503): shuncha marta keyinroq qayta uriniladi
+  defer_base_minutes: 2       # kutish: 2, 4, 8, 16 daqiqa...
+  media_dir: data/media
+  poll_seconds: 5

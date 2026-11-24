@@ -1,0 +1,13 @@
+TG HUNTER - TAYYOR PAPKA
+========================
+1) Docker Desktop ochiq bo'lsin ("Engine running").
+2) Telegramda: akkaunt 3 ta manba kanalga a'zo; bot @muhtashamtraveluzz da admin; botga /start yozilgan.
+3) BOSHLASH.bat ni ikki marta bosing. U o'zi quradi, Telegramga kirishni so'raydi (telefon + kod), tekshiradi va ishga tushiradi.
+
+Birinchi ishga tushirish DRY-RUN: kanalga hech narsa joylanmaydi, "joylanadigan" postlar botda sizga ko'rsatiladi.
+Natija yoqsa botga /dryrun off deb yozing (jonli rejim). Qaytarish: /dryrun on.
+
+Bot buyruqlari: /status /pause /resume /dryrun on|off /sources /last 10
+Loglar: LOGLAR.bat      To'xtatish: TOXTATISH.bat
+
+XAVFSIZLIK: .env fayli va data\hunter.session MAXFIY. Ularni hech kimga yubormang, bulutga (OneDrive/Drive) va gitga qo'ymang.
