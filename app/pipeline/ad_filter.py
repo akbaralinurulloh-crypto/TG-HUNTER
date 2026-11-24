@@ -45,7 +45,7 @@ _OPERATIONAL_RE = re.compile(
     r"|\b(?:хоналарга\s*тарқалиш|xonalarga\s*tarqalish)\b",
     re.IGNORECASE,
 )
-_WHITELIST_USERNAMES = {"@muhtashamadmin", "@muhtashamtraveluzz", "@muhtashamtravel"}
+_WHITELIST_USERNAMES = {"@muhtashamtraveluzz", "@muhtashamtravel"}
 _STRIP_SOCIAL_RE = re.compile(
     r"\b(?:youtube|facebook|ютуб|фейсбук|fb\.com|youtu\.be)\b|[▶️🎥🎬f]\s*(?:youtube|facebook)",
     re.IGNORECASE,

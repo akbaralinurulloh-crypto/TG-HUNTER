@@ -49,7 +49,6 @@ def split_text(text: str, limit: int = TEXT_LIMIT) -> list[str]:
 
 
 OFFICIAL_NUMBER = "+998 88 832 77 00"
-ADMIN_USERNAME = "@Muhtashamadmin"
 DEFAULT_TELEGRAM_CHANNEL = "@muhtashamtraveluzz"
 DEFAULT_INSTAGRAM_URL = "https://www.instagram.com/muhtasham_travel/"
 
@@ -58,15 +57,14 @@ def format_contact_footer(
     target_channel: str = DEFAULT_TELEGRAM_CHANNEL,
     instagram_url: str = DEFAULT_INSTAGRAM_URL,
 ) -> str:
-    """Rasmiy kontaktlar va ijtimoiy tarmoqlar (Telegram va Instagram) zamonaviy giperhavolalari."""
+    """Rasmiy kontaktlar va ijtimoiy tarmoqlar (Telegram va Instagram) zamoniy giperhavolalari."""
     tg_name = (target_channel or DEFAULT_TELEGRAM_CHANNEL).lstrip("@").strip()
     tg_url = f"https://t.me/{tg_name}"
     tg_link = f'<a href="{tg_url}">Telegram</a>'
     insta_link = f'<a href="{instagram_url}">Instagram</a>' if instagram_url else "Instagram"
     return (
         "📞 Batafsil va band qilish:\n"
-        f"📲 {OFFICIAL_NUMBER}\n"
-        f"📩 {ADMIN_USERNAME}\n\n"
+        f"📲 {OFFICIAL_NUMBER}\n\n"
         f"📱 {tg_link}  |  📸 {insta_link}"
     )
 
@@ -78,7 +76,7 @@ def clean_trailing_contacts(text: str) -> str:
     lines = []
     for line in text.splitlines():
         if re.search(
-            r"\b(?:youtube|facebook|ютуб|фейсбук|instagram|инстаграм|telegram|телеграм)\b|https?://(?:www\.)?(?:instagram\.com|t\.me|youtube\.com|youtu\.be|facebook\.com)",
+            r"\b(?:youtube|facebook|ютуб|фейсбук|instagram|инстаграм|telegram|телеграм)\b|@muhtashamadmin|https?://(?:www\.)?(?:instagram\.com|t\.me|youtube\.com|youtu\.be|facebook\.com)",
             line,
             re.IGNORECASE,
         ):
