@@ -61,15 +61,15 @@ def test_plan_attaches_instagram_url():
     assert expected in plan1.caption
     assert plan1.caption.endswith(expected)
     assert "+998 88 832 77 00" in plan1.caption
-    assert "@Muhtashamadmin" not in plan1.caption
-    assert "https://t.me/muhtashamtraveluzz" in plan1.caption
+    assert '<a href="https://t.me/muhiddinovak">@Muhtashamadmin</a>' in plan1.caption
+    assert '<a href="https://t.me/muhtashamtraveluz">Telegram</a>' in plan1.caption
     assert "YouTube" not in plan1.caption
     assert "Facebook" not in plan1.caption
 
     plan2 = build_plan("", "Faqat izoh.\n📩 @Muhtashamadmin", [P()], instagram_url=url)
     assert expected in plan2.caption
     assert "+998 88 832 77 00" in plan2.caption
-    assert "@Muhtashamadmin" not in plan2.caption
+    assert plan2.caption.count("@Muhtashamadmin") == 1
 
     plan3 = build_plan("Aloqa: 88 832 77 00\nInstagram", "Izoh", [P()], instagram_url=url)
     assert expected in plan3.caption and plan3.caption.count("Instagram</a>") == 1

@@ -49,22 +49,27 @@ def split_text(text: str, limit: int = TEXT_LIMIT) -> list[str]:
 
 
 OFFICIAL_NUMBER = "+998 88 832 77 00"
+ADMIN_LABEL = "@Muhtashamadmin"
+ADMIN_URL = "https://t.me/muhiddinovak"
 DEFAULT_TELEGRAM_CHANNEL = "@muhtashamtraveluzz"
+DEFAULT_TELEGRAM_URL = "https://t.me/muhtashamtraveluz"
 DEFAULT_INSTAGRAM_URL = "https://www.instagram.com/muhtasham_travel/"
 
 
 def format_contact_footer(
     target_channel: str = DEFAULT_TELEGRAM_CHANNEL,
     instagram_url: str = DEFAULT_INSTAGRAM_URL,
+    telegram_url: str = DEFAULT_TELEGRAM_URL,
 ) -> str:
-    """Rasmiy kontaktlar va ijtimoiy tarmoqlar (Telegram va Instagram) zamoniy giperhavolalari."""
-    tg_name = (target_channel or DEFAULT_TELEGRAM_CHANNEL).lstrip("@").strip()
-    tg_url = f"https://t.me/{tg_name}"
+    """Rasmiy kontaktlar va ijtimoiy tarmoqlar (Telegram va Instagram) zamonaviy giperhavolalari."""
+    tg_url = telegram_url or DEFAULT_TELEGRAM_URL
     tg_link = f'<a href="{tg_url}">Telegram</a>'
+    admin_link = f'<a href="{ADMIN_URL}">{ADMIN_LABEL}</a>'
     insta_link = f'<a href="{instagram_url}">Instagram</a>' if instagram_url else "Instagram"
     return (
         "📞 Batafsil va band qilish:\n"
-        f"📲 {OFFICIAL_NUMBER}\n\n"
+        f"📲 {OFFICIAL_NUMBER}\n"
+        f"📩 {admin_link}\n\n"
         f"📱 {tg_link}  |  📸 {insta_link}"
     )
 
