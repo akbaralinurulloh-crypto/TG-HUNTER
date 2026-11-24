@@ -74,3 +74,21 @@ async def test_album_needs_half_of_images_to_match(repo):
 async def test_unit_excludes_itself(repo):
     u = await add(repo, 1, LONG)
     assert not (await check_duplicate(repo, LONG, [], exclude_unit_id=u.id)).is_duplicate
+
+
+async def test_video_duplicate_catches_single_strong_keyframe_and_sha(repo, tmp_path):
+    a, b, c = (image_phash(make_image(i)) for i in (1, 2, 3))
+    first = await add(repo, 1, "", [a])
+    # Even 1 matching keyframe out of 3 is enough when has_video=True
+    v1 = await check_duplicate(repo, "", [a, b, c], has_video=True)
+    assert v1.is_duplicate and v1.reason == "media_phash" and v1.matched_unit_id == first.id
+
+    # Exact video file SHA-256 check
+    f = tmp_path / "vid.mp4"
+    f.write_bytes(b"video-bytes-123")
+    from app.pipeline.dedupe import file_sha256
+    sha = file_sha256(f)
+    u2, _ = await repo.add_unit(NormalizedUnit(-1, "S", [2], None, "", [], NOW))
+    await repo.add_hashes(u2.id, None, [], video_shas=[sha])
+    v2 = await check_duplicate(repo, "", [], video_shas=[sha], has_video=True)
+    assert v2.is_duplicate and v2.reason == "video_sha" and v2.matched_unit_id == u2.id

@@ -98,15 +98,34 @@ class Repository:
             rows = await s.scalars(select(AuditLog.event).where(AuditLog.unit_id == unit_id).order_by(AuditLog.id))
             return list(rows)
 
-    async def add_hashes(self, unit_id: int, text_hash: str | None, phashes: list[str]) -> None:
+    async def add_hashes(
+        self,
+        unit_id: int,
+        text_hash: str | None,
+        phashes: list[str],
+        video_shas: list[str] = (),
+    ) -> None:
         async with self._sm.begin() as s:
             if text_hash:
                 s.add(UnitHash(unit_id=unit_id, kind="text", value=text_hash))
             for ph in dict.fromkeys(phashes):
                 s.add(UnitHash(unit_id=unit_id, kind="phash", value=ph))
+            for vs in dict.fromkeys(video_shas):
+                s.add(UnitHash(unit_id=unit_id, kind="video_sha", value=vs))
 
     # Xato yoki qo'lda ko'rishga tushgan postlar nusxalarini to'smaydi (aks holda kontent yo'qolardi).
     _NON_BLOCKING = ("error", "manual_review")
+
+    async def find_by_video_sha(self, value: str, exclude_unit_id: int | None = None) -> int | None:
+        async with self._sm() as s:
+            q = (
+                select(UnitHash.unit_id)
+                .join(SourceUnit, SourceUnit.id == UnitHash.unit_id)
+                .where(UnitHash.kind == "video_sha", UnitHash.value == value, SourceUnit.state.not_in(self._NON_BLOCKING))
+            )
+            if exclude_unit_id is not None:
+                q = q.where(UnitHash.unit_id != exclude_unit_id)
+            return await s.scalar(q.order_by(UnitHash.unit_id).limit(1))
 
     async def find_by_text_hash(self, value: str, exclude_unit_id: int | None = None) -> int | None:
         async with self._sm() as s:

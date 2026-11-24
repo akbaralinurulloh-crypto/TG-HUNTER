@@ -19,7 +19,7 @@ from app.db.repository import Repository
 from app.llm.base import LLMClient
 from app.pipeline.branding import detect_branding, remove_branding
 from app.pipeline.captioner import make_caption
-from app.pipeline.dedupe import check_duplicate, image_phash, text_hash
+from app.pipeline.dedupe import check_duplicate, file_sha256, image_phash, text_hash
 from app.pipeline.media_clean import clean_image
 from app.pipeline.ocr import OCREngine, default_engines
 from app.pipeline.publisher import MediaItem, Publisher, build_plan, message_link
@@ -252,12 +252,15 @@ class Pipeline:
         photos = [_open(f.path) for f in files if f.kind == "photo"]
         videos = [f for f in files if f.kind == "video"]
         keyframes: list[Image.Image] = []
+        video_shas = [await asyncio.to_thread(file_sha256, v.path) for v in videos]
         for v in videos:
             keyframes += await asyncio.to_thread(self._keyframes, v.path, tmp)
-        phashes = [image_phash(i) for i in photos + keyframes[:3]]
-        await self.repo.add_hashes(unit.id, th, phashes)
-        if phashes:
-            dup = await check_duplicate(self.repo, "", phashes, exclude_unit_id=unit.id)
+        phashes = [image_phash(i) for i in photos + keyframes[:5]]
+        await self.repo.add_hashes(unit.id, th, phashes, video_shas=video_shas)
+        if phashes or video_shas:
+            dup = await check_duplicate(
+                self.repo, "", phashes, exclude_unit_id=unit.id, video_shas=video_shas, has_video=bool(videos),
+            )
             if dup.is_duplicate:
                 raise Rejected("rejected", "duplicate", matched_unit=dup.matched_unit_id, by=dup.reason)
 

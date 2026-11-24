@@ -50,6 +50,15 @@ def hamming(a: str, b: str) -> int:
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
+def file_sha256(path: str | Path) -> str:
+    """Video faylning aniq SHA-256 xeshini hisoblaydi."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 @dataclass(frozen=True)
 class DuplicateVerdict:
     is_duplicate: bool
@@ -63,22 +72,41 @@ async def check_duplicate(
     phashes: list[str],
     exclude_unit_id: int | None = None,
     max_distance: int = DEFAULT_MAX_DISTANCE,
+    video_shas: list[str] = (),
+    has_video: bool = False,
 ) -> DuplicateVerdict:
-    """Matn hash mos kelsa yoki media kadrlarining kamida yarmi ma'lum postga o'xshasa — dublikat."""
+    """Matn hash, video fayl SHA-256 yoki media perceptual hash mos kelsa — dublikat."""
     th = text_hash(text)
     if th:
         uid = await repo.find_by_text_hash(th, exclude_unit_id)
         if uid:
             return DuplicateVerdict(True, "text_hash", uid)
+    for vs in video_shas:
+        uid = await repo.find_by_video_sha(vs, exclude_unit_id)
+        if uid:
+            return DuplicateVerdict(True, "video_sha", uid)
     if phashes:
         known = await repo.known_phashes(exclude_unit_id)
-        hits: dict[int, int] = {}
-        for ph in phashes:
-            matched = {uid for uid, kp in known if hamming(ph, kp) <= max_distance}
-            for uid in matched:
-                hits[uid] = hits.get(uid, 0) + 1
-        need = max(1, -(-len(phashes) // 2))
-        for uid, n in sorted(hits.items(), key=lambda kv: -kv[1]):
-            if n >= need:
-                return DuplicateVerdict(True, "media_phash", uid)
+        if has_video:
+            soft_hits: dict[int, int] = {}
+            for ph in phashes:
+                for uid, kp in known:
+                    d = hamming(ph, kp)
+                    if d <= max_distance:
+                        return DuplicateVerdict(True, "media_phash", uid)
+                    if d <= max_distance + 4:
+                        soft_hits[uid] = soft_hits.get(uid, 0) + 1
+            for uid, n in sorted(soft_hits.items(), key=lambda kv: -kv[1]):
+                if n >= 2:
+                    return DuplicateVerdict(True, "media_phash", uid)
+        else:
+            hits: dict[int, int] = {}
+            for ph in phashes:
+                matched = {uid for uid, kp in known if hamming(ph, kp) <= max_distance}
+                for uid in matched:
+                    hits[uid] = hits.get(uid, 0) + 1
+            need = max(1, -(-len(phashes) // 2))
+            for uid, n in sorted(hits.items(), key=lambda kv: -kv[1]):
+                if n >= need:
+                    return DuplicateVerdict(True, "media_phash", uid)
     return DuplicateVerdict(False)
