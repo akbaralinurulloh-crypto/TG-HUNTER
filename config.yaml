@@ -77,7 +77,7 @@ media:
   sample_interval: 0.5        # video: har necha soniyada kadr OCR qilinadi
   max_frames: 120
   max_video_seconds: 300
-  max_video_mb: 45            # Telegram Bot API 50 MB dan kattasini yubora olmaydi
+  max_video_mb: 49            # Telegram Bot API 50 MB dan kattasini yubora olmaydi: 49 MB gacha asl sifatda ketadi
   max_cover_fraction: 0.30    # kadrning shundan ko'p qismini yopish kerak bo'lsa post rad etiladi
   logo_check: true            # logotip/suv belgisi (vizual LLM). Kvotani tejash uchun false qilish mumkin, lekin logolar o'tib ketadi
 

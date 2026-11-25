@@ -137,6 +137,22 @@ class Publisher(Protocol):
     async def publish(self, chat_id: int | str, plan: PostPlan) -> list[int]: ...
 
 
+def _video_meta(path: Path) -> dict:
+    """Telegram videoni telefonda qisib ('pakana') ko'rsatmasligi uchun width/height/duration ni oladi."""
+    try:
+        from app.pipeline.video_clean import probe
+        info = probe(path)
+        meta: dict = {"supports_streaming": True}
+        if info.width > 0 and info.height > 0:
+            meta["width"] = info.width
+            meta["height"] = info.height
+        if info.duration > 0:
+            meta["duration"] = max(1, int(round(info.duration)))
+        return meta
+    except Exception:
+        return {"supports_streaming": True}
+
+
 class AiogramPublisher:
     def __init__(self, bot, *, max_retries: int = 5, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
         self.bot, self.max_retries, self._sleep = bot, max_retries, sleep
@@ -165,14 +181,23 @@ class AiogramPublisher:
         if len(plan.media) == 1:
             m = plan.media[0]
             send = self.bot.send_photo if m.kind == "photo" else self.bot.send_video
-            kw = {"photo": FSInputFile(m.path)} if m.kind == "photo" else {"video": FSInputFile(m.path), "supports_streaming": True}
+            kw = {"photo": FSInputFile(m.path)} if m.kind == "photo" else {"video": FSInputFile(m.path), **_video_meta(m.path)}
             ids.append((await self._call(send, chat_id, caption=plan.caption or None, parse_mode="HTML", **kw)).message_id)
         else:
             group = [
-                (InputMediaPhoto if m.kind == "photo" else InputMediaVideo)(
-                    media=FSInputFile(m.path),
-                    caption=(plan.caption or None) if i == 0 else None,
-                    parse_mode="HTML" if (plan.caption and i == 0) else None,
+                (
+                    InputMediaPhoto(
+                        media=FSInputFile(m.path),
+                        caption=(plan.caption or None) if i == 0 else None,
+                        parse_mode="HTML" if (plan.caption and i == 0) else None,
+                    )
+                    if m.kind == "photo"
+                    else InputMediaVideo(
+                        media=FSInputFile(m.path),
+                        caption=(plan.caption or None) if i == 0 else None,
+                        parse_mode="HTML" if (plan.caption and i == 0) else None,
+                        **_video_meta(m.path),
+                    )
                 )
                 for i, m in enumerate(plan.media[:ALBUM_LIMIT])
             ]

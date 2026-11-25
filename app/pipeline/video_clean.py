@@ -65,8 +65,24 @@ def probe(path: Path) -> VideoInfo:
     v = next((s for s in data["streams"] if s.get("codec_type") == "video"), None)
     if v is None:
         raise ValueError("videoda video oqim yo'q")
+    w, h = int(v["width"]), int(v["height"])
+    rot = 0
+    try:
+        rot = int(float(v.get("tags", {}).get("rotate", 0)))
+    except (TypeError, ValueError):
+        rot = 0
+    if not rot:
+        for sd in v.get("side_data_list", []):
+            if "rotation" in sd:
+                try:
+                    rot = int(float(sd["rotation"]))
+                    break
+                except (TypeError, ValueError):
+                    pass
+    if abs(rot) % 180 == 90:
+        w, h = h, w
     dur = float(data.get("format", {}).get("duration") or v.get("duration") or 0)
-    return VideoInfo(int(v["width"]), int(v["height"]), dur, any(s.get("codec_type") == "audio" for s in data["streams"]))
+    return VideoInfo(w, h, dur, any(s.get("codec_type") == "audio" for s in data["streams"]))
 
 
 def sample_frames(path: Path, step: float, offset: float, outdir: Path) -> list[tuple[float, Image.Image]]:
@@ -153,7 +169,7 @@ def _render(path: Path, out: Path, regions: list[Region], info: VideoInfo, tmpdi
         chains.append(f"{last}[{i}:v]overlay={r.box[0]}:{r.box[1]}:enable='between(t,{r.t0:.3f},{r.t1:.3f})'{nxt}")
         last = nxt
     base = ["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", ";".join(chains), "-map", last, "-map", "0:a?"]
-    enc = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+    enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "16", "-profile:v", "high", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
     p = _run(base + enc + ["-c:a", "copy", str(out)])
     if p.returncode != 0:  # audio kodeki mp4'ga to'g'ridan-to'g'ri sig'masa
         p = _run(base + enc + ["-c:a", "aac", "-b:a", "128k", str(out)])
@@ -219,21 +235,21 @@ def clean_video(
         return VideoResult("ok", out_path, changed=True, regions=regions, new_number_verified=verified)
 
 
-def compress_to_fit(src: Path, dst: Path, max_bytes: int, audio_kbps: int = 96, attempts: int = 3) -> Path | None:
-    """Videoni `max_bytes` ga sig'adigan qilib qayta kodlaydi. Natija katta chiqsa bitrate kamaytirilib qayta uriniladi.
+def compress_to_fit(src: Path, dst: Path, max_bytes: int, audio_kbps: int = 128, attempts: int = 3) -> Path | None:
+    """Videoni `max_bytes` ga sig'adigan qilib eng yuqori sifatda qayta kodlaydi. Natija katta chiqsa bitrate kamaytirilib qayta uriniladi.
     Sig'dirib bo'lmasa (juda uzun/katta, sifat yaroqsiz bo'lardi) — None."""
     if src.stat().st_size <= max_bytes:
         return src
     info = probe(src)
     dur = max(info.duration, 1.0)
-    v_kbps = int(max_bytes * 8 * 0.85 / dur / 1000 - (audio_kbps if info.has_audio else 0))
+    v_kbps = int(max_bytes * 8 * 0.90 / dur / 1000 - (audio_kbps if info.has_audio else 0))
     for _ in range(attempts):
         if v_kbps < 150:  # bundan past bitrate'da tasvir yaroqsiz bo'ladi
             break
-        width = 1280 if v_kbps >= 1200 else 854 if v_kbps >= 500 else 640
+        width = 1920 if v_kbps >= 700 else 854
         cmd = [
             "ffmpeg", "-v", "error", "-y", "-i", str(src),
-            "-vf", f"scale='min({width},iw)':-2", "-c:v", "libx264", "-preset", "veryfast",
+            "-vf", f"scale='min({width},iw)':-2", "-c:v", "libx264", "-preset", "medium", "-profile:v", "high",
             "-b:v", f"{v_kbps}k", "-maxrate", f"{int(v_kbps * 1.15)}k", "-bufsize", f"{v_kbps * 2}k", "-pix_fmt", "yuv420p",
             *(["-c:a", "aac", "-b:a", f"{audio_kbps}k"] if info.has_audio else ["-an"]),
             "-movflags", "+faststart", str(dst),
