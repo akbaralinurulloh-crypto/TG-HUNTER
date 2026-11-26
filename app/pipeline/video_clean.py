@@ -66,6 +66,14 @@ def probe(path: Path) -> VideoInfo:
     if v is None:
         raise ValueError("videoda video oqim yo'q")
     w, h = int(v["width"]), int(v["height"])
+    sar = v.get("sample_aspect_ratio", "")
+    if sar and ":" in sar:
+        try:
+            sn, sd = (int(x) for x in sar.split(":", 1))
+            if sn > 0 and sd > 0 and sn != sd:
+                w = max(2, int(round(w * sn / sd)) & ~1)
+        except (TypeError, ValueError):
+            pass
     rot = 0
     try:
         rot = int(float(v.get("tags", {}).get("rotate", 0)))

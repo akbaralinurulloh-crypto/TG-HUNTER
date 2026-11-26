@@ -137,15 +137,39 @@ class Publisher(Protocol):
     async def publish(self, chat_id: int | str, plan: PostPlan) -> list[int]: ...
 
 
-def _video_meta(path: Path) -> dict:
-    """Telegram videoni telefonda qisib ('pakana') ko'rsatmasligi uchun width/height/duration ni oladi."""
+def _video_meta(path: Path, tmp_dir: Path | None = None) -> dict:
+    """Telegram videoni telefonda qisib ('pakana') ko'rsatmasligi uchun width/height/duration va thumbnail ni tayyorlaydi."""
     try:
+        import subprocess
+        from PIL import Image
         from app.pipeline.video_clean import probe
+
         info = probe(path)
         meta: dict = {"supports_streaming": True}
-        if info.width > 0 and info.height > 0:
-            meta["width"] = info.width
-            meta["height"] = info.height
+        w, h = info.width, info.height
+        if tmp_dir is not None and path.exists():
+            thumb = tmp_dir / f"thumb_{path.stem}.jpg"
+            p = subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y", "-i", str(path),
+                    "-frames:v", "1",
+                    "-vf", "scale='if(gte(iw,ih),320,-2)':'if(gte(iw,ih),-2,320)'",
+                    "-q:v", "3", str(thumb),
+                ],
+                capture_output=True,
+                timeout=20,
+            )
+            if p.returncode == 0 and thumb.exists() and thumb.stat().st_size > 0:
+                meta["thumbnail"] = FSInputFile(thumb)
+                with Image.open(thumb) as im:
+                    tw, th = im.size
+                if tw > 0 and th > 0 and w > 0 and h > 0:
+                    # Agar thumbnail va probe nisbati bir-biridan farq qilsa, thumbnail nisbatini asos qilamiz
+                    if (tw > th) != (w > h):
+                        w, h = h, w
+        if w > 0 and h > 0:
+            meta["width"] = w
+            meta["height"] = h
         if info.duration > 0:
             meta["duration"] = max(1, int(round(info.duration)))
         return meta
@@ -173,35 +197,38 @@ class AiogramPublisher:
                 await self._sleep(min(2.0 * 2**attempt, 30))
 
     async def publish(self, chat_id: int | str, plan: PostPlan) -> list[int]:
+        import tempfile
         ids: list[int] = []
         if not plan.media:
             for part in split_text(plan.text):
                 ids.append((await self._call(self.bot.send_message, chat_id, part, parse_mode="HTML")).message_id)
             return ids
-        if len(plan.media) == 1:
-            m = plan.media[0]
-            send = self.bot.send_photo if m.kind == "photo" else self.bot.send_video
-            kw = {"photo": FSInputFile(m.path)} if m.kind == "photo" else {"video": FSInputFile(m.path), **_video_meta(m.path)}
-            ids.append((await self._call(send, chat_id, caption=plan.caption or None, parse_mode="HTML", **kw)).message_id)
-        else:
-            group = [
-                (
-                    InputMediaPhoto(
-                        media=FSInputFile(m.path),
-                        caption=(plan.caption or None) if i == 0 else None,
-                        parse_mode="HTML" if (plan.caption and i == 0) else None,
+        with tempfile.TemporaryDirectory() as td:
+            tmp_dir = Path(td)
+            if len(plan.media) == 1:
+                m = plan.media[0]
+                send = self.bot.send_photo if m.kind == "photo" else self.bot.send_video
+                kw = {"photo": FSInputFile(m.path)} if m.kind == "photo" else {"video": FSInputFile(m.path), **_video_meta(m.path, tmp_dir)}
+                ids.append((await self._call(send, chat_id, caption=plan.caption or None, parse_mode="HTML", **kw)).message_id)
+            else:
+                group = [
+                    (
+                        InputMediaPhoto(
+                            media=FSInputFile(m.path),
+                            caption=(plan.caption or None) if i == 0 else None,
+                            parse_mode="HTML" if (plan.caption and i == 0) else None,
+                        )
+                        if m.kind == "photo"
+                        else InputMediaVideo(
+                            media=FSInputFile(m.path),
+                            caption=(plan.caption or None) if i == 0 else None,
+                            parse_mode="HTML" if (plan.caption and i == 0) else None,
+                            **_video_meta(m.path, tmp_dir),
+                        )
                     )
-                    if m.kind == "photo"
-                    else InputMediaVideo(
-                        media=FSInputFile(m.path),
-                        caption=(plan.caption or None) if i == 0 else None,
-                        parse_mode="HTML" if (plan.caption and i == 0) else None,
-                        **_video_meta(m.path),
-                    )
-                )
-                for i, m in enumerate(plan.media[:ALBUM_LIMIT])
-            ]
-            ids += [msg.message_id for msg in await self._call(self.bot.send_media_group, chat_id, group)]
+                    for i, m in enumerate(plan.media[:ALBUM_LIMIT])
+                ]
+                ids += [msg.message_id for msg in await self._call(self.bot.send_media_group, chat_id, group)]
         for part in split_text(plan.text):  # sarlavhaga sig'magan asl matn
             ids.append((await self._call(self.bot.send_message, chat_id, part, parse_mode="HTML")).message_id)
         return ids
