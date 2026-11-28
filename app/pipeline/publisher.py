@@ -178,8 +178,8 @@ def _video_meta(path: Path, tmp_dir: Path | None = None) -> dict:
 
 
 class AiogramPublisher:
-    def __init__(self, bot, *, max_retries: int = 5, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
-        self.bot, self.max_retries, self._sleep = bot, max_retries, sleep
+    def __init__(self, bot, *, max_retries: int = 5, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, telethon_client=None):
+        self.bot, self.max_retries, self._sleep, self.telethon_client = bot, max_retries, sleep, telethon_client
 
     async def _call(self, fn, *args, **kwargs):
         """FloodWait (TelegramRetryAfter) va tarmoq xatolarida qayta uriniladi."""
@@ -196,6 +196,37 @@ class AiogramPublisher:
                     raise
                 await self._sleep(min(2.0 * 2**attempt, 30))
 
+    async def _publish_via_telethon(self, chat_id: int | str, plan: PostPlan, tmp_dir: Path) -> list[int]:
+        """Videolarni Telethon (MTProto) orqali 2 GB gacha hech qanday siqishsiz, asl sifat va nisbatda yuboradi."""
+        from telethon.tl.types import DocumentAttributeVideo
+
+        if len(plan.media) == 1:
+            m = plan.media[0]
+            meta = _video_meta(m.path, tmp_dir) if m.kind == "video" else {}
+            kw: dict = {"caption": plan.caption or None, "parse_mode": "html"}
+            if m.kind == "video":
+                kw["supports_streaming"] = True
+                if "thumbnail" in meta:
+                    kw["thumb"] = str(meta["thumbnail"].path)
+                if "width" in meta and "height" in meta:
+                    kw["attributes"] = [
+                        DocumentAttributeVideo(
+                            duration=meta.get("duration", 1),
+                            w=meta["width"],
+                            h=meta["height"],
+                            supports_streaming=True,
+                        )
+                    ]
+            msg = await self.telethon_client.send_file(chat_id, str(m.path), **kw)
+            return [msg.id]
+        files = [str(m.path) for m in plan.media[:ALBUM_LIMIT]]
+        msgs = await self.telethon_client.send_file(
+            chat_id, files, caption=plan.caption or None, parse_mode="html", supports_streaming=True,
+        )
+        if not isinstance(msgs, list):
+            msgs = [msgs]
+        return [msg.id for msg in msgs]
+
     async def publish(self, chat_id: int | str, plan: PostPlan) -> list[int]:
         import tempfile
         ids: list[int] = []
@@ -205,6 +236,18 @@ class AiogramPublisher:
             return ids
         with tempfile.TemporaryDirectory() as td:
             tmp_dir = Path(td)
+            has_video = any(m.kind == "video" for m in plan.media)
+            if has_video and self.telethon_client is not None:
+                try:
+                    ids = await self._publish_via_telethon(chat_id, plan, tmp_dir)
+                    for part in split_text(plan.text):
+                        ids.append((await self._call(self.bot.send_message, chat_id, part, parse_mode="HTML")).message_id)
+                    return ids
+                except Exception as exc:
+                    max_size = max((m.path.stat().st_size for m in plan.media if m.path.exists()), default=0)
+                    if max_size > 49 * 1024 * 1024:
+                        raise
+                    log.warning("telethon_publish_fallback_to_bot", error=str(exc)[:150])
             if len(plan.media) == 1:
                 m = plan.media[0]
                 send = self.bot.send_photo if m.kind == "photo" else self.bot.send_video

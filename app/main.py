@@ -54,7 +54,7 @@ async def run() -> None:
 
     llm = build_llm(settings, cfg)
     pipeline = Pipeline(
-        repo, llm, cfg, AiogramPublisher(bot), TelethonMedia(client),
+        repo, llm, cfg, AiogramPublisher(bot, telethon_client=client), TelethonMedia(client),
         target=target, admin_id=admin_id, dry_run_default=settings.dry_run, notify=notify,
     )
     watcher = Watcher(client, repo, settings.source_channels, on_new_unit=pipeline.wake, notify=notify, include_groups=cfg.watcher.include_groups)

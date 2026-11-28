@@ -356,12 +356,6 @@ class Pipeline:
         if r.status != "ok":
             raise Rejected("rejected" if r.status == "reject" else "manual_review", r.reason or "video_clean", score=score)
         final = r.path
-        cap = int(m.max_video_mb * 1024 * 1024)
-        if final.stat().st_size > cap:  # Bot API 50 MB dan kattasini yubora olmaydi: rad etmasdan siqamiz
-            fitted = await asyncio.to_thread(compress_to_fit, final, tmp / f"fit_{idx}.mp4", cap)
-            if fitted is None:
-                raise Rejected("rejected", "media_too_large", score=score, size_mb=round(final.stat().st_size / 1048576, 1))
-            final = fitted
         if m.logo_check:  # videoda logotipni qoplamaymiz: aniqlansa — qo'lda ko'rib chiqish (fail-closed)
             frames = await asyncio.to_thread(self._keyframes, final, tmp)
             try:

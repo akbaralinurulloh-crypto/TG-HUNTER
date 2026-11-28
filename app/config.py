@@ -58,9 +58,9 @@ class LLMCfg(BaseModel):
 class MediaCfg(BaseModel):
     sample_interval: float = Field(0.5, gt=0)  # videodan kadr olish oralig'i (soniya)
     max_frames: int = Field(120, ge=1)
-    max_video_seconds: float = Field(300, gt=0)
-    max_video_mb: float = Field(45, gt=0)  # Bot API yuborish limiti 50 MB: kattaroq video shu hajmgacha SIQILADI
-    max_download_mb: float = Field(300, gt=0)  # manbadan shundan katta videoni yuklamaymiz (rad etiladi)
+    max_video_seconds: float = Field(3600, gt=0)
+    max_video_mb: float = Field(2000, gt=0)  # Telethon orqali 2 GB gacha siqilmasdan yuboriladi
+    max_download_mb: float = Field(2000, gt=0)  # manbadan 2 GB gacha videolarni cheklovsiz yuklaymiz
     max_cover_fraction: float = Field(0.30, gt=0, le=1)  # kadrning shundan ko'p qismini yopish kerak bo'lsa — REJECT
     logo_check: bool = True  # logotip/suv belgisini vizual LLM bilan tekshirish (LLM kvotasini ishlatadi)
     ocr_engines: list[Literal["tesseract", "rapidocr"]] = ["tesseract", "rapidocr"]  # kam xotirali serverda faqat ["tesseract"]
